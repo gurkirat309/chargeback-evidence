@@ -11,9 +11,17 @@ ESCALATE using explicit rupee arithmetic.
 
 ## Status
 
-**Phase 1 — synthetic dispute generator: complete and verified.** Later phases
-(winnability model, decision engine, evidence agent, LLM letter + verifier,
-evaluation harness, dashboard) are not built yet; see `CLAUDE.md` §15.
+Phases 1–4 complete: **synthetic dispute generator**, **winnability model**
+(calibrated logistic regression), **decision engine** (pure EV arithmetic, unit
+tested), and the **evidence agent + LLM letter/verifier** (Groq). Remaining:
+evaluation harness (§12) and dashboard UI (§15 steps 5–6).
+
+> **LLM provider note.** CLAUDE.md §11 specifies `claude-sonnet-4-6` via the
+> Anthropic API. Per the maintainer's direction this build uses **Groq**
+> (`openai/gpt-oss-120b` generator, `openai/gpt-oss-20b` verifier; key in `.env`
+> as `GROQ_API_KEY`, never committed). Everything else in §11 is preserved: two
+> calls, an independent verifier, and every response cached to `data/llm_cache/`
+> keyed by an input hash — so once warmed, the demo needs no live call.
 
 ## Two ideas that make this distinct
 
@@ -111,6 +119,27 @@ we regenerate with looser weights. Current: **0.777** (PASS). The single tuning 
   A naive `fought` column is included to make this structure discussable.
 - **Cost figures are directional.** Vendor-sourced constants in `config/costs.yaml`
   (Chargebacks911) are directional, not audited.
+
+## LLM layer (Phase 4)
+
+Three stages, all deterministic-by-cache:
+
+- **Evidence agent** (`src/evidence_agent.py`) — a fixed 8-step lookup sequence
+  (deliberately *not* agentic) that assembles a numbered bundle; every artifact
+  carries an `artifact_id` resolving to a source record. Only artifacts that
+  actually exist are emitted, so the generator can never cite an absent one.
+- **Generator** (`src/llm_generator.py`) — sees only the bundle + reason code,
+  returns `{framing, claims:[{claim, artifact_id}]}`. No `p_win`, no decision.
+- **Verifier** (`src/llm_verifier.py`) — a separate, smaller model; for each
+  claim it sees the claim and its cited artifact and returns
+  `{supported, reason}`. Unsupported claims are stripped before assembly — the
+  letter gets shorter, never invented.
+
+Run the demo/metrics: `python src/llm_demo.py --n 12`. Measured on a 12-dispute
+test sample: **citation coverage 100%**, verifier **strips ~8%** of generated
+claims as unsupported, **hallucination-under-stress 0%** (delete a cited artifact,
+regenerate — the deleted fact is not re-asserted), and an adversarial probe
+(fabricated claims that contradict their artifact) is **caught 5/5**.
 
 ## Layout
 

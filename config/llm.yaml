@@ -1,0 +1,24 @@
+# LLM layer config (CLAUDE.md section 11).
+# NOTE: CLAUDE.md section 11 specifies claude-sonnet-4-6 via the Anthropic API.
+# Per the user's direction we use Groq instead (key in .env as GROQ_API_KEY).
+# This is a documented deviation; everything else in section 11 is preserved:
+# two calls (generator + independent verifier), every response cached to
+# data/llm_cache/ keyed by a hash of the input, demo never needs a live call.
+
+provider: groq
+
+generator:
+  model: openai/gpt-oss-120b     # receives ONLY the bundle + reason_code
+  temperature: 0.2               # low: we want faithful, not creative, claims
+  max_tokens: 2000               # gpt-oss reasons before answering — leave room
+  reasoning_effort: low          # keep reasoning short so it does not starve output
+
+verifier:
+  model: openai/gpt-oss-20b      # a SEPARATE, smaller model checks each claim
+  temperature: 0.0               # deterministic support judgements
+  max_tokens: 1200
+  reasoning_effort: low
+
+cache_dir: data/llm_cache
+request_timeout_s: 60
+max_retries: 3

@@ -17,6 +17,12 @@ __pycache__/
 # Generated reports / plots
 reports/
 
+# Secrets — never commit API keys
+.env
+.env.*
+*.key
+secrets.*
+
 # OS / editor
 .DS_Store
 Thumbs.db
