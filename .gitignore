@@ -1,0 +1,24 @@
+# Data — raw IEEE-CIS is huge and licensed; processed/generated is reproducible
+data/raw/
+data/processed/
+data/llm_cache/
+
+# Kaggle CSVs (some sit at repo root); never track raw/generated CSV
+*.csv
+!config/*.csv
+
+# Environments
+.venv/
+venv/
+env/
+__pycache__/
+*.pyc
+
+# Generated reports / plots
+reports/
+
+# OS / editor
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/

@@ -1,0 +1,22 @@
+# Money constants. CLAUDE.md section 8 — nothing money-related is hardcoded
+# elsewhere. Every rupee figure in the UI must trace back to this file.
+
+usd_to_inr: 88.0                 # conversion for TransactionAmt (USD) -> INR
+
+representment_fee_inr: 2500      # network/processor fee to contest one dispute
+analyst_minutes_per_case: 35     # staff time to assemble + file one representment
+analyst_cost_per_hour_inr: 400   # loaded hourly cost of a dispute analyst
+analyst_hours_per_day: 6         # productive dispute hours per analyst per day
+
+# VAMP = Visa Acquirer Monitoring Program (dispute-ratio monitoring). These
+# drive the ratio_benefit term in the decision engine (Phase 3), not Phase 1.
+vamp_threshold_pct: 0.90         # dispute-ratio % that triggers the program
+vamp_warning_band_pct: 0.15      # band below threshold where relief ramps 0->1
+vamp_fine_per_dispute_inr: 800   # per-dispute fine once in the program
+
+sources:
+  dispute_rate_cnp: "0.6-1.0% — Chargebacks911 (vendor, directional)"
+  chargeback_fee: "$20-100 — Chargebacks911 (vendor, directional)"
+  avg_dispute_amount: "$76 — Chargebacks911 (vendor, directional)"
+  analyst_time: "team assumption, not sourced"
+  win_rates: "team assumption, not sourced"

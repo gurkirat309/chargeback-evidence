@@ -1,0 +1,174 @@
+# Synthetic dispute generator config. CLAUDE.md sections 5-7, 16.
+# NO magic numbers in generate_data.py — everything tunable lives here, and
+# these comments are the source for the README "assumptions" section.
+
+seed: 20260830                    # single seed; whole pipeline is reproducible
+
+sampling:
+  subset_size: 200000            # working subset of transactions
+  # Sampled in TransactionDT order so temporal structure (ordering, gaps)
+  # survives. 1% dispute rate over 200k -> ~2,000 disputes (section 7 target).
+  # mode: 'span'  -> sort by DT, take an evenly-strided block covering the FULL
+  #                  182-day window (order preserved). Chosen so the temporal
+  #                  split spans the real 6 months and right-censoring is a
+  #                  small honest tail rather than ~0 (head) or ~40% (a 53-day
+  #                  contiguous block censored against its own end).
+  # mode: 'head'  -> the earliest 200k rows (a ~53-day contiguous block).
+  mode: span
+
+# ---------------------------------------------------------------------------
+# Dispute selection — ~1% of the subset, NON-uniform (CLAUDE.md section 7).
+# Over-represent fraud, high-value, and no-identity transactions. Implemented
+# as weighted sampling without replacement; weights multiply.
+# ---------------------------------------------------------------------------
+dispute_selection:
+  dispute_rate_target: 0.01
+  weight_fraud: 6.0              # isFraud==1 txns 6x more likely to be disputed
+  weight_no_identity: 1.8        # txns with no identity record more likely
+  amount_tilt: 1.5              # weight scales 1..(1+tilt) with amount percentile
+
+# ---------------------------------------------------------------------------
+# Reason-code assignment. CONDITIONAL on isFraud, not independent (section 7).
+# Agent-initiated cases are carved FIRST (see agent_initiated block) from
+# legit, identity-bearing disputes; the rest draw from one of two categoricals
+# over the four non-agent codes depending on the underlying isFraud label.
+# target_share is the marginal the verifier checks realised mix against.
+# ---------------------------------------------------------------------------
+reason_code_mix:
+  target_share:
+    fraud: 0.35
+    inr: 0.25
+    nad: 0.20
+    subscription: 0.12
+    agent_initiated: 0.08
+  conditional_when_fraud:        # isFraud == 1 skews hard toward 'fraud'
+    fraud: 0.70
+    inr: 0.12
+    nad: 0.10
+    subscription: 0.08
+  conditional_when_legit:        # isFraud == 0
+    fraud: 0.33
+    inr: 0.28
+    nad: 0.25
+    subscription: 0.14
+
+# ---------------------------------------------------------------------------
+# Filing lag. Right-skewed: most disputes filed within 30 days, tail to ~90.
+# gamma(k=2, theta=12) -> mean 24d, ~95th pct ~57d, occasional ~90d+.
+# filed_dt = TransactionDT + days*86400. Disputes whose filed_dt exceeds the
+# 182-day data window are DROPPED as right-censored (section 12), not clipped.
+# ---------------------------------------------------------------------------
+lag_distribution:
+  shape_k: 2.0
+  scale_theta: 12.0
+  min_days: 1
+
+# ---------------------------------------------------------------------------
+# Evidence generation. Presence is conditioned on the underlying isFraud label
+# so evidence carries genuine signal (section 6). Probabilistic, never
+# deterministic: genuine customers sometimes lack proof, fraud sometimes has it.
+# Two parameter sets per feature: 'genuine' (isFraud==0) vs 'fraud' (isFraud==1).
+# ---------------------------------------------------------------------------
+evidence:
+  avs_match_p:            {genuine: 0.85, fraud: 0.45}
+  cvv_match_p:            {genuine: 0.92, fraud: 0.60}
+  three_ds_dist:
+    genuine: {passed: 0.55, attempted: 0.25, none: 0.20}
+    fraud:   {passed: 0.20, attempted: 0.30, none: 0.50}
+  # device_match_status is three-state. 'unknown' whenever the transaction has
+  # NO identity record (section 5). When identity IS present, genuine skews
+  # matched, fraud skews mismatched.
+  device_match_when_identity:
+    genuine: {matched: 0.75, mismatched: 0.25}
+    fraud:   {matched: 0.30, mismatched: 0.70}
+  prior_txn_count:        {genuine_lam: 12, fraud_lam: 3}     # poisson
+  prior_undisputed_frac:  {genuine: 0.95, fraud: 0.60}        # binom thinning
+  account_age_days:
+    genuine: {shape_k: 2.5, scale_theta: 240}   # gamma, mean ~600 days
+    fraud:   {shape_k: 1.2, scale_theta: 40}    # gamma, mean ~48 days
+  delivery_proof_dist:
+    genuine: {none: 0.20, tracking: 0.30, signature: 0.20, otp: 0.15, photo: 0.15}
+    fraud:   {none: 0.55, tracking: 0.25, signature: 0.08, otp: 0.07, photo: 0.05}
+  delivery_otp_verified_p: {genuine: 0.90, fraud: 0.55}       # only if proof==otp
+  ip_to_ship_km:
+    genuine: {shape_k: 1.5, scale_theta: 30}    # gamma, mostly local
+    fraud:   {shape_k: 2.0, scale_theta: 400}   # gamma, far / spoofed
+  ip_is_datacenter_p:     {genuine: 0.05, fraud: 0.30}
+  customer_contacted_support_p: {genuine: 0.55, fraud: 0.30}
+  support_ticket_count:   {genuine_lam: 1.5, fraud_lam: 0.6}  # poisson if contacted
+  product_photos_on_file_p: {genuine: 0.60, fraud: 0.35}
+  refund_policy_shown_p:  {genuine: 0.70, fraud: 0.55}
+  consent_record_exists_p: {genuine: 0.75, fraud: 0.30}      # subscription-relevant
+  agent_mandate_on_file_p: {genuine: 0.05, fraud: 0.03}      # rare unless agent case
+
+# ---------------------------------------------------------------------------
+# Agent-initiated signature (section 7). Generated as GENUINELY legitimate
+# transactions (isFraud==0) that have an identity record, then stamped with the
+# anomalous device/IP signature. The distinction from the missing-identity
+# majority is 'mismatched' vs 'unknown' — an OBSERVED wrong device.
+# ---------------------------------------------------------------------------
+agent_initiated:
+  device_match_status: mismatched
+  ip_is_datacenter: true
+  customer_contacted_support: false
+  three_ds_status: passed
+  agent_mandate_on_file: true
+
+# ---------------------------------------------------------------------------
+# Outcome generation (section 6). Additive logit, unobserved issuer_leniency,
+# Gaussian noise, then Bernoulli sample. NO deterministic evidence->outcome rule.
+# base_logit sets per-reason base win rate; sigmoid(base) ~= section 7 target.
+# ---------------------------------------------------------------------------
+outcome:
+  base_logit:              # sigmoid(x): -1.10->0.25, 0.41->0.60, -0.62->0.35,
+    fraud: -1.10           #             -0.20->0.45, -0.41->0.40
+    inr: 0.41
+    nad: -0.62
+    subscription: -0.20
+    agent_initiated: -0.41
+  # Weights on OBSERVABLE evidence indicators only. Never isFraud, p_win, or the
+  # issuer group. weight_scale multiplies them all — the single knob tuned to
+  # land the leakage AUC in the 0.72-0.80 band (evidence spread vs noise+issuer).
+  weight_scale: 1.9
+  weights:
+    avs_match: 0.25
+    cvv_match: 0.25
+    three_ds_passed: 0.40
+    device_matched: 0.45
+    device_mismatched: -0.45
+    prior_undisputed_count: 0.015    # per clean prior txn (capped)
+    account_age_days: 0.0006         # per day (capped)
+    delivery_proof_strong: 0.60      # signature / otp / photo
+    delivery_proof_tracking: 0.30
+    delivery_otp_verified: 0.35
+    ip_is_datacenter: -0.45
+    customer_contacted_support: 0.12
+    product_photos_on_file: 0.25
+    refund_policy_shown: 0.20
+    consent_record_exists: 0.55      # matters for subscription
+    agent_mandate_on_file: 0.70      # matters for agent
+  caps:
+    prior_undisputed_count: 20
+    account_age_days: 900
+  issuer_leniency:                   # unobserved effect the model cannot see
+    n_groups: 20                     # card1 hashed into this many issuer groups
+    sigma: 0.5                       # spread of the per-group latent logit shift
+  noise_sigma: 0.6                   # irreducible Gaussian noise on the logit
+
+# ---------------------------------------------------------------------------
+# 'fought' — what a naive historical merchant would have done: fight above an
+# amount threshold. Gives the censored-label structure to discuss later
+# (section 12). NOT used for training in Phase 1.
+# ---------------------------------------------------------------------------
+fought_policy:
+  amount_threshold_inr: 5000
+  flip_prob: 0.05                    # occasional deviation from the naive rule
+
+# ---------------------------------------------------------------------------
+# Evaluation knobs the verifier (and later the harness) read.
+# ---------------------------------------------------------------------------
+evaluation:
+  train_fraction: 0.70               # temporal split on filed_dt (section 12)
+  escalation_rate_target: 0.10       # top-N% by uncertainty*amount (section 9)
+  leakage_auc_band: [0.72, 0.80]     # PASS band
+  leakage_auc_fail_above: 0.85       # above this = leaking, regenerate
