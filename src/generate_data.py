@@ -351,37 +351,42 @@ def add_fought(rng, d, cfg):
 # --------------------------------------------------------------------------- #
 # main
 # --------------------------------------------------------------------------- #
-def main():
+def main(weight_scale=None, out=OUT, verbose=True):
+    """Generate the dispute layer. weight_scale overrides outcome.weight_scale
+    (used by the Phase 2 robustness sweep); out selects the output directory."""
     t0 = time.time()
+    log = print if verbose else (lambda *a, **k: None)
     cfg = load_yaml(ROOT / "config" / "generator.yaml")
     costs = load_yaml(ROOT / "config" / "costs.yaml")
+    if weight_scale is not None:
+        cfg["outcome"]["weight_scale"] = weight_scale
     rng = np.random.default_rng(cfg["seed"])
-    OUT.mkdir(parents=True, exist_ok=True)
+    out.mkdir(parents=True, exist_ok=True)
 
-    print("[1/6] loading subset ...")
+    log("[1/6] loading subset ...")
     sub, data_window_end = load_subset(cfg, costs)
     print(f"      subset: {len(sub):,} txns, "
           f"isFraud {sub['isFraud'].mean()*100:.2f}%, "
           f"identity {sub['has_identity'].mean()*100:.2f}%")
 
-    print("[2/6] selecting disputes ...")
+    log("[2/6] selecting disputes ...")
     d = select_disputes(rng, sub, cfg)
     n_selected = len(d)
-    print(f"      selected {len(d):,} disputes "
-          f"(fraud {d['isFraud'].mean()*100:.1f}%, "
-          f"identity {d['has_identity'].mean()*100:.1f}%)")
+    log(f"      selected {len(d):,} disputes "
+        f"(fraud {d['isFraud'].mean()*100:.1f}%, "
+        f"identity {d['has_identity'].mean()*100:.1f}%)")
 
-    print("[3/6] assigning reason codes ...")
+    log("[3/6] assigning reason codes ...")
     d = assign_reason_codes(rng, d, cfg)
     generated_reason_share = d["reason_code"].value_counts(normalize=True).to_dict()
 
-    print("[4/6] reason-conditional filing lag + right-censor drop ...")
+    log("[4/6] reason-conditional filing lag + right-censor drop ...")
     d = assign_lag(rng, d, cfg)                       # lag depends on reason_code
     d, n_dropped, obs_end = censor_right(d, cfg, data_window_end)
     buf = cfg["censoring"]["observation_buffer_days"]
-    print(f"      dropped {n_dropped:,} right-censored "
-          f"({n_dropped/n_selected*100:.1f}% of selected); {len(d):,} remain "
-          f"(observation_end={obs_end/SECONDS_PER_DAY:.0f}d = data max + {buf}d buffer)")
+    log(f"      dropped {n_dropped:,} right-censored "
+        f"({n_dropped/n_selected*100:.1f}% of selected); {len(d):,} remain "
+        f"(observation_end={obs_end/SECONDS_PER_DAY:.0f}d = data max + {buf}d buffer)")
 
     # identifiers + amounts now that the dispute set is final
     d = d.reset_index(drop=True)
@@ -391,11 +396,11 @@ def main():
     # until Phase 3 sets the real network deadline; documented as such.
     d["deadline_dt"] = d["filed_dt"] + 30 * SECONDS_PER_DAY
 
-    print("[5/6] generating evidence ...")
+    log("[5/6] generating evidence ...")
     e = generate_evidence(rng, d, cfg)
 
-    print("[6/6] generating outcomes + fought ...")
-    out = generate_outcomes(rng, d, e, d["card1"], cfg)
+    log("[6/6] generating outcomes + fought ...")
+    outc = generate_outcomes(rng, d, e, d["card1"], cfg)
     d["fought"] = add_fought(rng, d, cfg)
 
     # ---- assemble the four tables ----
@@ -408,15 +413,15 @@ def main():
     dataset = (
         disputes
         .merge(e, on="dispute_id")
-        .merge(out[["dispute_id", "p_win_true", "won", "issuer_group"]], on="dispute_id")
+        .merge(outc[["dispute_id", "p_win_true", "won", "issuer_group"]], on="dispute_id")
         .merge(d[["dispute_id", "TransactionDT", "isFraud", "has_identity",
                   "ProductCD", "card4", "card6"]], on="dispute_id")
     )
 
-    disputes.to_parquet(OUT / "disputes.parquet", index=False)
-    e.to_parquet(OUT / "evidence.parquet", index=False)
-    out[["dispute_id", "p_win_true", "won"]].to_parquet(OUT / "outcomes.parquet", index=False)
-    dataset.to_parquet(OUT / "dataset.parquet", index=False)
+    disputes.to_parquet(out / "disputes.parquet", index=False)
+    e.to_parquet(out / "evidence.parquet", index=False)
+    outc[["dispute_id", "p_win_true", "won"]].to_parquet(out / "outcomes.parquet", index=False)
+    dataset.to_parquet(out / "dataset.parquet", index=False)
 
     # meta for the verifier: things not recoverable from the processed tables
     import json
@@ -439,14 +444,15 @@ def main():
         "leakage_auc_band": cfg["evaluation"]["leakage_auc_band"],
         "leakage_auc_fail_above": cfg["evaluation"]["leakage_auc_fail_above"],
     }
-    with open(OUT / "meta.json", "w", encoding="utf-8") as fh:
+    with open(out / "meta.json", "w", encoding="utf-8") as fh:
         json.dump(meta, fh, indent=2)
 
-    print(f"\nwrote {len(disputes):,} disputes to {OUT}")
-    print(f"  realised win rate: {out['won'].mean()*100:.1f}%")
-    print(f"  reason mix: " + ", ".join(
+    log(f"\nwrote {len(disputes):,} disputes to {out}")
+    log(f"  realised win rate: {outc['won'].mean()*100:.1f}%")
+    log(f"  reason mix: " + ", ".join(
         f"{k} {v*100:.0f}%" for k, v in disputes['reason_code'].value_counts(normalize=True).items()))
-    print(f"[done in {time.time()-t0:.1f}s]")
+    log(f"[done in {time.time()-t0:.1f}s]")
+    return out
 
 
 if __name__ == "__main__":
