@@ -24,7 +24,10 @@ sampling:
 dispute_selection:
   dispute_rate_target: 0.01
   weight_fraud: 6.0              # isFraud==1 txns 6x more likely to be disputed
-  weight_no_identity: 1.8        # txns with no identity record more likely
+  weight_no_identity: 1.15       # txns with no identity record more likely.
+                                 # Kept mild (still >1, directionally per §7):
+                                 # a stronger skew starves the legit+identity
+                                 # pool the 15% agent_initiated carve draws from.
   amount_tilt: 1.5              # weight scales 1..(1+tilt) with amount percentile
 
 # ---------------------------------------------------------------------------
@@ -35,33 +38,50 @@ dispute_selection:
 # target_share is the marginal the verifier checks realised mix against.
 # ---------------------------------------------------------------------------
 reason_code_mix:
+  # agent_initiated raised to 15% for EVALUATION POWER (not realism): at 8% only
+  # ~48 land in the test split, giving a ~±14pp CI on the differentiating class.
+  # 15% -> ~90 test cases, usable segment metrics. Stated as such in the README.
   target_share:
-    fraud: 0.35
-    inr: 0.25
-    nad: 0.20
-    subscription: 0.12
-    agent_initiated: 0.08
+    fraud: 0.32
+    inr: 0.23
+    nad: 0.19
+    subscription: 0.11
+    agent_initiated: 0.15
   conditional_when_fraud:        # isFraud == 1 skews hard toward 'fraud'
     fraud: 0.70
     inr: 0.12
     nad: 0.10
     subscription: 0.08
-  conditional_when_legit:        # isFraud == 0
-    fraud: 0.33
-    inr: 0.28
-    nad: 0.25
-    subscription: 0.14
+  conditional_when_legit:        # isFraud == 0 (retuned for the 15% agent carve,
+    fraud: 0.27                  # which removes legit disputes before this draw)
+    inr: 0.31
+    nad: 0.27
+    subscription: 0.15
 
 # ---------------------------------------------------------------------------
-# Filing lag. Right-skewed: most disputes filed within 30 days, tail to ~90.
-# gamma(k=2, theta=12) -> mean 24d, ~95th pct ~57d, occasional ~90d+.
-# filed_dt = TransactionDT + days*86400. Disputes whose filed_dt exceeds the
-# 182-day data window are DROPPED as right-censored (section 12), not clipped.
+# Filing lag. Right-skewed gamma(shape_k, scale_theta); mean = k*theta days.
+# REASON-CONDITIONAL: time-to-file is a real dispute signal. Fraud is noticed on
+# the statement (fast); item-not-received must wait out the expected delivery
+# window; subscription is often noticed only after a billing cycle (long tail);
+# agent-initiated disputes are a fast "undo". filed_dt = TransactionDT + days*86400.
 # ---------------------------------------------------------------------------
 lag_distribution:
-  shape_k: 2.0
-  scale_theta: 12.0
   min_days: 1
+  by_reason:
+    fraud:           {shape_k: 2.0, scale_theta: 9.0}    # mean ~18d
+    inr:             {shape_k: 2.2, scale_theta: 14.0}   # mean ~31d, waits for delivery
+    nad:             {shape_k: 2.0, scale_theta: 13.0}   # mean ~26d, receive+inspect
+    subscription:    {shape_k: 1.8, scale_theta: 20.0}   # mean ~36d, long tail
+    agent_initiated: {shape_k: 2.0, scale_theta: 4.0}    # mean ~8d, fast undo
+
+# Right-censoring. A dispute is observed only if filed within the observation
+# window. observation_end = last-transaction day + observation_buffer_days: real
+# data extracts land some weeks AFTER the final transaction, so recent txns have
+# had time to accrue disputes. 0 would assume extract at the instant of the last
+# txn (maximal ~13% censoring); 14d models a ~2-week extract lag. Disputes filed
+# later are DROPPED, not clipped (section 12).
+censoring:
+  observation_buffer_days: 14
 
 # ---------------------------------------------------------------------------
 # Evidence generation. Presence is conditioned on the underlying isFraud label

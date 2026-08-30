@@ -67,9 +67,20 @@ The generator is driven entirely by `config/generator.yaml` and `config/costs.ya
 - **Per-reason intercept is Jensen-corrected.** Win rate is `sigmoid(logit)`; a wide
   logit spread pulls the mean toward 0.5, so each reason's intercept is solved so the
   *realised* mean win rate matches the §7 target.
+- **Reason-conditional filing lag.** Time-to-file is a real dispute signal, so the lag
+  is drawn per reason code: fraud is noticed on the statement (~18d), item-not-received
+  waits out the delivery window (~28d), subscription is caught only after a billing
+  cycle (~32d, long tail), agent-initiated is a fast undo (~8d).
 - **Split on `filed_dt`, drop right-censored.** In production we decide when a dispute
-  is *filed*, so the temporal split is on filing date, not transaction date. Disputes
-  filed beyond the 182-day window are dropped, never clipped.
+  is *filed*, so the temporal split is on filing date, not transaction date. A dispute
+  is observed only if filed before `observation_end = last-transaction day +
+  observation_buffer_days`; later filings are dropped, never clipped. The buffer
+  (14 days) models the real gap between the last transaction and the data-extract date
+  — without it, censoring maxes out (~13%) by assuming extract at the instant of the
+  final transaction. At 14 days censoring is ~5%, and because slow-filing reasons
+  censor more, the *observed* reason mix drifts slightly toward fast-filing reasons
+  (fraud/agent) relative to the generated mix — a realistic censoring bias, reported by
+  the verifier.
 - **`device_match_status` is three-state** (`matched` / `mismatched` / `unknown`).
   `unknown` = no identity record (three quarters of data); a boolean would encode
   missingness rather than signal.
@@ -85,6 +96,16 @@ we regenerate with looser weights. Current: **0.777** (PASS). The single tuning 
 
 - **182 days is short for drift analysis.** The temporal split guards against
   look-ahead leakage; it does **not** demonstrate resistance to long-run drift.
+- **Agent-initiated share is set for evaluation power, not realism.** It is 15% of
+  disputes (~300 cases, ~90 in the test split) so the differentiating class has enough
+  test mass for segment metrics with usable confidence intervals; a realistic share
+  would be low single digits. Because agent cases require an *observed* (mismatched)
+  device, they need an identity record, which caps how strongly no-identity
+  transactions can be over-represented elsewhere.
+- **`consent_record_exists` is general evidence, not subscription-only.** It is present
+  at ~58–79% across all reason codes (verifier check 4b), so it is not a reason-code
+  proxy; its correlation with `won` reflects its outcome weight. It carries the most
+  weight for subscription cases.
 - **Censored labels.** In production we only observe outcomes for cases that were
   fought, so real training data is biased; correcting it needs a randomized holdout.
   A naive `fought` column is included to make this structure discussable.

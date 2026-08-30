@@ -105,8 +105,11 @@ def load_subset(cfg, costs):
     if mode == "head":
         sub = txn.iloc[:n].copy()
     elif mode == "span":
-        stride = len(txn) // n            # evenly-strided, covers full window
-        sub = txn.iloc[::stride].iloc[:n].copy()
+        # evenly-spaced indices across the FULL sorted range (0 .. len-1), so the
+        # subset truly covers all 182 days. (A stride+truncate would only cover
+        # the first n*stride rows — the earlier bug that made censoring ~0.)
+        idx = np.unique(np.linspace(0, len(txn) - 1, n).round().astype(int))
+        sub = txn.iloc[idx].copy()
     else:
         raise ValueError(f"unknown sampling.mode: {mode!r}")
 
@@ -133,21 +136,28 @@ def select_disputes(rng, sub, cfg):
     return d
 
 
-def apply_lag_and_censor(rng, d, cfg, data_window_end):
-    """Right-skewed filing lag; drop disputes filed beyond the 182-day data window."""
+def assign_lag(rng, d, cfg):
+    """Right-skewed filing lag, REASON-CONDITIONAL (see config). Needs reason_code."""
     lg = cfg["lag_distribution"]
-    days = rng.gamma(lg["shape_k"], lg["scale_theta"], size=len(d))
+    reason = d["reason_code"].to_numpy()
+    days = np.empty(len(d), dtype=float)
+    for r, params in lg["by_reason"].items():
+        m = reason == r
+        days[m] = rng.gamma(params["shape_k"], params["scale_theta"], size=int(m.sum()))
     days = np.clip(np.round(days), lg["min_days"], None).astype(int)
     d["days_txn_to_dispute"] = days
     d["filed_dt"] = d["TransactionDT"] + days * SECONDS_PER_DAY
+    return d
 
-    # A dispute filed after the 182-day data window is right-censored: we never
-    # observe its outcome. DROP, not clip (clipping piles mass at the boundary
-    # and distorts the lag tail). Boundary is the true data max (section 12).
-    keep = d["filed_dt"] <= data_window_end
+
+def censor_right(d, cfg, data_window_end):
+    """Drop disputes filed after the observation window (last txn + buffer)."""
+    buffer_s = cfg["censoring"]["observation_buffer_days"] * SECONDS_PER_DAY
+    observation_end = data_window_end + buffer_s
+    keep = d["filed_dt"] <= observation_end
     n_dropped = int((~keep).sum())
     d = d[keep].copy().reset_index(drop=True)
-    return d, n_dropped, data_window_end
+    return d, n_dropped, observation_end
 
 
 def assign_reason_codes(rng, d, cfg):
@@ -361,21 +371,25 @@ def main():
           f"(fraud {d['isFraud'].mean()*100:.1f}%, "
           f"identity {d['has_identity'].mean()*100:.1f}%)")
 
-    print("[3/6] filing lag + right-censor drop ...")
-    d, n_dropped, obs_end = apply_lag_and_censor(rng, d, cfg, data_window_end)
-    print(f"      dropped {n_dropped:,} right-censored; "
-          f"{len(d):,} remain (data_window_end={obs_end:,}s = {obs_end/SECONDS_PER_DAY:.0f}d)")
-
-    print("[4/6] assigning reason codes ...")
+    print("[3/6] assigning reason codes ...")
     d = assign_reason_codes(rng, d, cfg)
+    generated_reason_share = d["reason_code"].value_counts(normalize=True).to_dict()
+
+    print("[4/6] reason-conditional filing lag + right-censor drop ...")
+    d = assign_lag(rng, d, cfg)                       # lag depends on reason_code
+    d, n_dropped, obs_end = censor_right(d, cfg, data_window_end)
+    buf = cfg["censoring"]["observation_buffer_days"]
+    print(f"      dropped {n_dropped:,} right-censored "
+          f"({n_dropped/n_selected*100:.1f}% of selected); {len(d):,} remain "
+          f"(observation_end={obs_end/SECONDS_PER_DAY:.0f}d = data max + {buf}d buffer)")
 
     # identifiers + amounts now that the dispute set is final
+    d = d.reset_index(drop=True)
     d["dispute_id"] = [f"DSP{ i:06d}" for i in range(len(d))]
     d["disputed_amount_inr"] = d["amount_inr"].round(2)
-    # deadline_dt: representment window after filing. Placeholder span (mean lag,
-    # in days) until Phase 3 sets the real network deadline; documented as such.
-    deadline_days = int(cfg["lag_distribution"]["scale_theta"] * cfg["lag_distribution"]["shape_k"])
-    d["deadline_dt"] = d["filed_dt"] + deadline_days * SECONDS_PER_DAY
+    # deadline_dt: representment window after filing. Placeholder 30-day span
+    # until Phase 3 sets the real network deadline; documented as such.
+    d["deadline_dt"] = d["filed_dt"] + 30 * SECONDS_PER_DAY
 
     print("[5/6] generating evidence ...")
     e = generate_evidence(rng, d, cfg)
@@ -411,10 +425,14 @@ def main():
         "subset_size": int(len(sub)),
         "n_selected": int(n_selected),
         "n_dropped_right_censored": int(n_dropped),
+        "censor_rate_of_selected": float(n_dropped / n_selected),
         "n_disputes": int(len(disputes)),
-        "data_window_end": int(obs_end),
+        "data_window_end": int(data_window_end),
+        "observation_buffer_days": cfg["censoring"]["observation_buffer_days"],
+        "observation_end": int(obs_end),
         "train_fraction": cfg["evaluation"]["train_fraction"],
         "target_share": cfg["reason_code_mix"]["target_share"],
+        "generated_reason_share": {k: float(v) for k, v in generated_reason_share.items()},
         "base_win_rate": {  # section 7 targets (sigmoid of base_logit)
             r: float(sigmoid(v)) for r, v in cfg["outcome"]["base_logit"].items()
         },

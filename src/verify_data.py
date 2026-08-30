@@ -80,12 +80,17 @@ def main():
           f"(target 1.00%)")
 
     # ---------------------------------------------------------------- 2
-    hr("2. REASON CODE DISTRIBUTION vs TARGET")
-    realised = df["reason_code"].value_counts(normalize=True)
-    print(f"{'code':<16}{'realised':>10}{'target':>10}{'delta':>10}")
+    hr("2. REASON CODE DISTRIBUTION  (generated vs target; observed drifts by censoring)")
+    observed = df["reason_code"].value_counts(normalize=True)
+    gen = meta.get("generated_reason_share", {})
+    print(f"{'code':<16}{'target':>9}{'generated':>11}{'observed':>10}{'obs-tgt':>9}")
     for code, tgt in meta["target_share"].items():
-        rea = realised.get(code, 0.0)
-        print(f"{code:<16}{rea*100:>9.1f}%{tgt*100:>9.1f}%{(rea-tgt)*100:>+9.1f}")
+        g = gen.get(code, 0.0)
+        o = observed.get(code, 0.0)
+        print(f"{code:<16}{tgt*100:>8.1f}%{g*100:>10.1f}%{o*100:>9.1f}%{(o-tgt)*100:>+9.1f}")
+    print("\n  'generated' = pre-censor mix (should match target). 'observed' drifts")
+    print("  toward fast-filing reasons (fraud/agent) because slow-filing reasons")
+    print("  (inr/subscription) are censored more often — realistic, by design.")
 
     # ---------------------------------------------------------------- 3
     hr("3. REALISED WIN RATE PER REASON vs BASE RATE")
@@ -108,6 +113,22 @@ def main():
         print(line)
     print(f"\nmax |correlation| = {corr.abs().max():.3f}")
 
+    # ---------------------------------------------------------------- 4b
+    hr("4b. consent_record_exists BY reason_code  (proxy check)")
+    tab = df.groupby("reason_code")["consent_record_exists"].agg(["mean", "sum", "count"])
+    print(f"{'reason_code':<16}{'present %':>10}{'n_present':>11}{'n':>7}")
+    for code in meta["base_win_rate"]:
+        if code in tab.index:
+            r = tab.loc[code]
+            print(f"{code:<16}{r['mean']*100:>9.1f}%{int(r['sum']):>11}{int(r['count']):>7}")
+    lo, hi = tab["mean"].min(), tab["mean"].max()
+    if lo > 0.2:
+        print(f"\n  {GREEN}present at {lo*100:.0f}-{hi*100:.0f}% across ALL reasons -> "
+              f"NOT a reason-code proxy.{END} Its correlation reflects outcome weight.")
+    else:
+        print(f"\n  {YELLOW}near-zero for some reasons -> partly a reason proxy; "
+              f"see README segment-model note.{END}")
+
     # ---------------------------------------------------------------- 5
     hr("5. p_win_true — MEAN PER REASON + SPREAD (want spread, not a spike)")
     print(f"{'code':<16}{'mean':>8}{'std':>8}{'p10':>8}{'p50':>8}{'p90':>8}")
@@ -124,6 +145,33 @@ def main():
     for i in range(10):
         bar = "#" * int(hist[i] / max(hist) * 40)
         print(f"   [{edges[i]:.1f},{edges[i+1]:.1f})  {hist[i]:>5}  {bar}")
+
+    # ---------------------------------------------------------------- 5b
+    hr("5b. FILING LAG (days_txn_to_dispute) — distribution + by reason")
+    SPD = 86400
+    lag = df["days_txn_to_dispute"]
+    print(f"OVERALL   mean {lag.mean():>5.1f}  median {lag.median():>4.0f}  "
+          f"p90 {lag.quantile(.9):>4.0f}  p99 {lag.quantile(.99):>4.0f}  max {lag.max():>4}")
+    print(f"{'by reason':<16}{'mean':>7}{'median':>8}{'p90':>7}{'p99':>7}{'max':>7}")
+    for code in meta["base_win_rate"]:
+        s = df.loc[df["reason_code"] == code, "days_txn_to_dispute"]
+        print(f"  {code:<14}{s.mean():>7.1f}{s.median():>8.0f}"
+              f"{s.quantile(.9):>7.0f}{s.quantile(.99):>7.0f}{s.max():>7}")
+
+    hr("5c. filed_dt vs OBSERVATION BOUNDARY  (right-censoring)")
+    obs_end_day = meta["observation_end"] / SPD
+    fd = df["filed_dt"] / SPD
+    print(f"observation_end = day {obs_end_day:.0f}  "
+          f"(data max day {meta['data_window_end']/SPD:.0f} + "
+          f"{meta['observation_buffer_days']}d buffer)")
+    print(f"right-censored dropped = {meta['n_dropped_right_censored']:,} "
+          f"({meta['censor_rate_of_selected']*100:.1f}% of {meta['n_selected']:,} selected)")
+    print("\n  filed_dt histogram (observed disputes; day bins):")
+    hist, edges = np.histogram(fd, bins=list(range(0, int(obs_end_day) + 15, 15)))
+    for i in range(len(hist)):
+        bar = "#" * int(hist[i] / max(hist) * 40)
+        near = "  <- near boundary" if edges[i + 1] > obs_end_day - 15 else ""
+        print(f"   day [{edges[i]:>3.0f},{edges[i+1]:>3.0f})  {hist[i]:>4}  {bar}{near}")
 
     # ---------------------------------------------------------------- 6
     hr("6. TEMPORAL SPLIT (on filed_dt, section 12)")
