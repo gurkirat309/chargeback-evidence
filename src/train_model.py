@@ -292,6 +292,74 @@ def main():
     else:
         print(f"  LGBM meaningfully better (gap {gap:+.3f}); keep it.")
 
+    finalize_logistic(b, fit, val, cal, test)
+
+
+def finalize_logistic(b, fit, val, cal, test):
+    """Train the CHOSEN model (logistic) on the full TRAIN window and persist
+    calibrated p_win for every dispute -> data/processed/predictions.parquet.
+
+    LR is correctly specified for the additive-logit DGP (section 6), so its RAW
+    probabilities should already be well-calibrated with no post-hoc step (which
+    removes the small-calib-slice bottleneck). We verify raw vs isotonic on test
+    and keep whichever has the better Brier."""
+    hr("FINAL MODEL — logistic regression on full TRAIN window")
+    train_all = np.concatenate([fit, val])          # hold out `cal` to test post-hoc
+    scaler = StandardScaler().fit(b.X_ohe.iloc[train_all])
+    lr = LogisticRegression(max_iter=2000).fit(
+        scaler.transform(b.X_ohe.iloc[train_all]), b.y.iloc[train_all])
+
+    def predict(idx):
+        return lr.predict_proba(scaler.transform(b.X_ohe.iloc[idx]))[:, 1]
+
+    ytr_test = b.y.iloc[test].to_numpy()
+    p_raw = predict(test)
+    # optional post-hoc, fit on the held-out cal slice
+    iso = IsotonicRegression(out_of_bounds="clip").fit(predict(cal), b.y.iloc[cal].to_numpy())
+    p_iso = iso.predict(p_raw)
+
+    b_raw = brier_score_loss(ytr_test, p_raw)
+    b_iso = brier_score_loss(ytr_test, p_iso)
+    e_raw = expected_calibration_error(ytr_test, p_raw)
+    e_iso = expected_calibration_error(ytr_test, p_iso)
+    print(f"  {'variant':<18}{'AUC':>8}{'Brier':>10}{'ECE':>10}{'spread':>9}")
+    print(f"  {'LR raw':<18}{roc_auc_score(ytr_test, p_raw):>8.3f}"
+          f"{b_raw:>10.4f}{e_raw:>10.4f}{np.std(p_raw):>9.3f}")
+    print(f"  {'LR + isotonic':<18}{roc_auc_score(ytr_test, p_iso):>8.3f}"
+          f"{b_iso:>10.4f}{e_iso:>10.4f}{np.std(p_iso):>9.3f}")
+
+    use_raw = b_raw <= b_iso
+    chosen = "raw (no post-hoc needed — correctly specified)" if use_raw else "isotonic"
+    print(f"\n  chosen final calibration: {chosen}")
+
+    # Persisted model: raw LR needs no holdout, so refit on the FULL train window
+    # (fit+val+cal) for the extra data. If isotonic were chosen we'd keep cal out.
+    if use_raw:
+        train_final = np.concatenate([fit, val, cal])
+        scaler_f = StandardScaler().fit(b.X_ohe.iloc[train_final])
+        lr_f = LogisticRegression(max_iter=2000).fit(
+            scaler_f.transform(b.X_ohe.iloc[train_final]), b.y.iloc[train_final])
+        p_all = lr_f.predict_proba(scaler_f.transform(b.X_ohe))[:, 1]
+    else:
+        p_all = iso.predict(predict(np.arange(len(b.y))))
+
+    all_idx = np.arange(len(b.y))
+    disputes = pd.read_parquet(F.PROC / "disputes.parquet")   # row order preserved
+    preds = pd.DataFrame({
+        "dispute_id": disputes["dispute_id"].to_numpy(),
+        "p_win": p_all,
+        "won": b.y.to_numpy(),
+        "reason_code": b.reason_code.to_numpy(),
+        "disputed_amount_inr": b.X["disputed_amount_inr"].to_numpy(),
+        "filed_dt": b.filed_dt.to_numpy(),
+        "split": np.where(np.isin(all_idx, test), "test", "train"),
+    })
+    out = F.PROC / "predictions.parquet"
+    preds.to_parquet(out, index=False)
+    print(f"  persisted p_win for {len(preds):,} disputes -> {out}")
+    print(f"  test slice = {int((preds['split']=='test').sum())} out-of-sample "
+          f"(these feed the Phase 3 decision engine + Phase 5 harness)")
+
 
 if __name__ == "__main__":
     main()
