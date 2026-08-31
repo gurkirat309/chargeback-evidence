@@ -11,10 +11,23 @@ ESCALATE using explicit rupee arithmetic.
 
 ## Status
 
-Phases 1–5 complete: **synthetic dispute generator**, **winnability model**
-(calibrated logistic regression), **decision engine** (pure EV arithmetic, unit
-tested), the **evidence agent + LLM letter/verifier** (Groq), and the
-**evaluation harness** (§12). Remaining: dashboard UI (§15 step 6).
+**All six phases complete:** synthetic dispute generator, winnability model
+(calibrated logistic regression), decision engine (pure EV arithmetic, unit
+tested), evidence agent + LLM letter/verifier (Groq), evaluation harness (§12),
+and the **dashboard** (§15 step 6).
+
+Run the dashboard:
+
+```bash
+python app/main.py --warm      # one-time: warm the LLM cache for the demo cases
+python app/main.py             # serve on http://127.0.0.1:8000
+```
+
+The dashboard animates the 8-step evidence agent, shows the rupee EV arithmetic
+behind each FIGHT / ACCEPT / REFUND / ESCALATE decision, renders the rebuttal
+letter with claims that click through to their cited artifact, and has a
+merchant dispute-ratio slider — drag it over the VAMP threshold to watch
+winnable cases flip to REFUND for ratio relief (idea A above), live.
 
 ### Headline result (`src/evaluate.py`, temporal test split, n=566)
 
