@@ -11,10 +11,26 @@ ESCALATE using explicit rupee arithmetic.
 
 ## Status
 
-Phases 1–4 complete: **synthetic dispute generator**, **winnability model**
+Phases 1–5 complete: **synthetic dispute generator**, **winnability model**
 (calibrated logistic regression), **decision engine** (pure EV arithmetic, unit
-tested), and the **evidence agent + LLM letter/verifier** (Groq). Remaining:
-evaluation harness (§12) and dashboard UI (§15 steps 5–6).
+tested), the **evidence agent + LLM letter/verifier** (Groq), and the
+**evaluation harness** (§12). Remaining: dashboard UI (§15 step 6).
+
+### Headline result (`src/evaluate.py`, temporal test split, n=566)
+
+| policy | net recovery ₹ |
+|---|---:|
+| fight everything | 1,972,116 |
+| fight nothing | 0 |
+| fight if amount > ₹2,000 | 2,028,095 |
+| fight if p_win > 0.5 | 1,815,433 |
+| **Contra (EV + ratio + capacity)** | **2,444,442** |
+
+Contra beats the "fight if amount > ₹2,000" bar by **+20.5%**. It also beats the
+best *single* p_win threshold (₹2.12M at t≈0.04) — because it ranks on expected
+value (p_win × amount) under an analyst-hour budget, not on p_win or amount alone.
+Test calibration: Brier 0.185, ECE 0.056. Net figures are recovery relative to
+the fight-nothing baseline, consistent with the §9 EVs.
 
 > **LLM provider note.** CLAUDE.md §11 specifies `claude-sonnet-4-6` via the
 > Anthropic API. Per the maintainer's direction this build uses **Groq**

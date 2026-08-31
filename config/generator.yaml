@@ -192,3 +192,9 @@ evaluation:
   escalation_rate_target: 0.10       # top-N% by uncertainty*amount (section 9)
   leakage_auc_band: [0.72, 0.80]     # PASS band
   leakage_auc_fail_above: 0.85       # above this = leaking, regenerate
+  # Phase 5 harness: assumed merchant dispute-ratio for the headline table.
+  # 0.50 sits in the safe zone (below the 0.90 threshold - 0.15 band), so
+  # ratio_benefit is 0 and Contra's headline number is EV + capacity, not
+  # inflated by ratio-relief refunds. Ratio sensitivity is shown separately.
+  assumed_current_ratio: 0.50
+  fight_if_amount_threshold_inr: 2000   # the baseline policy Contra must beat
