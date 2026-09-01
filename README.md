@@ -1,8 +1,10 @@
-# Contra — Chargeback Evidence & Dispute Triage
+# RokdaDaav — *Fight Only When It Pays.*
+
+Chargeback evidence & dispute triage for online merchants.
 
 A chargeback dispute triage and representment system for online merchants. When a
 customer disputes a card transaction, contesting it costs money and staff time, so
-contesting a case you will lose is negative expected value. Contra gathers evidence,
+contesting a case you will lose is negative expected value. RokdaDaav gathers evidence,
 predicts P(win) with a calibrated model, and decides FIGHT / ACCEPT / REFUND /
 ESCALATE using explicit rupee arithmetic.
 
@@ -37,9 +39,9 @@ winnable cases flip to REFUND for ratio relief (idea A above), live.
 | fight nothing | 0 |
 | fight if amount > ₹2,000 | 2,028,095 |
 | fight if p_win > 0.5 | 1,815,433 |
-| **Contra (EV + ratio + capacity)** | **2,444,442** |
+| **RokdaDaav (EV + ratio + capacity)** | **2,444,442** |
 
-Contra beats the "fight if amount > ₹2,000" bar by **+20.5%**. It also beats the
+RokdaDaav beats the "fight if amount > ₹2,000" bar by **+20.5%**. It also beats the
 best *single* p_win threshold (₹2.12M at t≈0.04) — because it ranks on expected
 value (p_win × amount) under an analyst-hour budget, not on p_win or amount alone.
 Test calibration: Brier 0.185, ECE 0.056. Net figures are recovery relative to
@@ -149,12 +151,12 @@ we regenerate with looser weights. Current: **0.777** (PASS). The single tuning 
 - **Cost figures are directional.** Vendor-sourced constants in `config/costs.yaml`
   (Chargebacks911) are directional, not audited.
 
-## MCP server — Contra as a callable risk tool
+## MCP server — RokdaDaav as a callable risk tool
 
-Contra is exposed over the **Model Context Protocol** (`src/mcp_server.py`), so an
+RokdaDaav is exposed over the **Model Context Protocol** (`src/mcp_server.py`), so an
 agentic host — a merchant's assistant, Claude Desktop, Cursor, or Claude Code —
 can *consult* it. The design point: the **agency lives in the host**, while the
-auditable, metric-backed substance stays in Contra's deterministic tools. Contra
+auditable, metric-backed substance stays in RokdaDaav's deterministic tools. RokdaDaav
 never becomes an unauditable agent; MCP is only the interface over the pure
 functions already built and tested. **Strictly defense-only**: no tool is
 offense-capable, and `draft_rebuttal` can only cite real, verifier-passed
@@ -165,12 +167,12 @@ artifacts (fabrications are stripped).
 recovery, precision/recall/F1, and the rupee confusion matrix (false-positive
 cost) on the held-out test set, so the track's judging bar is a first-class,
 queryable capability rather than a buried slide. **Resources**:
-`contra://methodology`, `contra://metrics`.
+`rokdadaav://methodology`, `rokdadaav://metrics`.
 
 Wire it into a client (config in `.mcp.json`):
 
 ```json
-{ "mcpServers": { "contra": {
+{ "mcpServers": { "rokdadaav": {
   "command": "C:/Fraud/.venv/Scripts/python.exe",
   "args": ["C:/Fraud/src/mcp_server.py"] } } }
 ```

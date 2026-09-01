@@ -1,16 +1,16 @@
 """
-Contra MCP server — the deterministic risk pipeline exposed over the Model
+RokdaDaav MCP server — the deterministic risk pipeline exposed over the Model
 Context Protocol (CLAUDE.md sections 9-12; hackathon track 02, AI Risk Manager).
 
 The agency lives in the HOST (a merchant's assistant, Claude Desktop, Cursor);
-the auditable, metric-backed substance lives here as tools. Contra never becomes
+the auditable, metric-backed substance lives here as tools. RokdaDaav never becomes
 an unauditable agent — MCP is only the interface over pure functions already
 built and tested. STRICTLY DEFENSE-ONLY: no tool is offense-capable; the rebuttal
 drafter is merchant-side and can only cite real, verifier-passed artifacts.
 
 Run (stdio):  python src/mcp_server.py
 Wire into a client (e.g. Claude Desktop / Cursor mcp config):
-  { "mcpServers": { "contra": {
+  { "mcpServers": { "rokdadaav": {
       "command": "C:/Fraud/.venv/Scripts/python.exe",
       "args": ["C:/Fraud/src/mcp_server.py"] } } }
 """
@@ -162,7 +162,7 @@ def h_rebuttal(did: str) -> dict:
 
 def _policy_action(policy: str, ratio: float):
     p = policy.lower()
-    if p == "contra":
+    if p == "rokdadaav":
         dec = _decided(ratio)
         a = dec.loc[_test["dispute_id"]]["action"].to_numpy().copy()
         base = dec.loc[_test["dispute_id"]]["base_action"].to_numpy()
@@ -175,11 +175,11 @@ def _policy_action(policy: str, ratio: float):
         return EVAL.policy_fight_amount(_test, AMT_THR)
     if p in ("fight_pwin", "pwin"):
         return EVAL.policy_fight_pwin(_test, 0.5)
-    raise ValueError(f"unknown policy '{policy}'. Use: contra | fight_all | "
+    raise ValueError(f"unknown policy '{policy}'. Use: rokdadaav | fight_all | "
                      f"fight_none | fight_amount | fight_pwin")
 
 
-def h_evaluate(policy: str = "contra", current_ratio: float = DEFAULT_RATIO) -> dict:
+def h_evaluate(policy: str = "rokdadaav", current_ratio: float = DEFAULT_RATIO) -> dict:
     won = _test["won"].to_numpy()
     amt = _test["disputed_amount_inr"].to_numpy()
     action = _policy_action(policy, current_ratio)
@@ -204,11 +204,11 @@ def h_evaluate(policy: str = "contra", current_ratio: float = DEFAULT_RATIO) -> 
 
 
 # ---- MCP server -------------------------------------------------------------
-mcp = MCPServer("contra")
+mcp = MCPServer("rokdadaav")
 
 
 @mcp.tool(description="List held-out disputes with reason, amount, calibrated "
-                      "p_win, and Contra's recommended action.")
+                      "p_win, and RokdaDaav's recommended action.")
 def list_disputes(limit: int = 25) -> list:
     return h_list_disputes(limit)
 
@@ -238,17 +238,17 @@ def draft_rebuttal(dispute_id: str) -> dict:
 
 @mcp.tool(description="Honest metrics for a policy on the held-out test set: net "
                       "recovery, precision/recall/F1, and the rupee confusion matrix "
-                      "(false-positive cost). policy: contra|fight_all|fight_none|"
+                      "(false-positive cost). policy: rokdadaav|fight_all|fight_none|"
                       "fight_amount|fight_pwin.")
-def evaluate_policy(policy: str = "contra", current_ratio: float = DEFAULT_RATIO) -> dict:
+def evaluate_policy(policy: str = "rokdadaav", current_ratio: float = DEFAULT_RATIO) -> dict:
     return h_evaluate(policy, current_ratio)
 
 
-@mcp.resource("contra://methodology",
+@mcp.resource("rokdadaav://methodology",
               description="Assumptions, limitations, and the defense-only stance.")
 def methodology() -> str:
     return (
-        "Contra — chargeback dispute triage (defense-only).\n\n"
+        "RokdaDaav — chargeback dispute triage (defense-only).\n\n"
         "- Winnability: gradient-checked; shipped model is calibrated logistic "
         "regression (the outcome DGP is an additive logit). Temporal test AUC ~0.78, "
         "Brier 0.185, ECE 0.056.\n"
@@ -265,13 +265,13 @@ def methodology() -> str:
     )
 
 
-@mcp.resource("contra://metrics",
+@mcp.resource("rokdadaav://metrics",
               description="Headline net-recovery comparison on the held-out test set.")
 def metrics() -> str:
     won = _test["won"].to_numpy()
     amt = _test["disputed_amount_inr"].to_numpy()
     lines = ["Net recovery (Rs), held-out test split:"]
-    for name in ["fight_all", "fight_none", "fight_amount", "fight_pwin", "contra"]:
+    for name in ["fight_all", "fight_none", "fight_amount", "fight_pwin", "rokdadaav"]:
         a = _policy_action(name, DEFAULT_RATIO)
         lines.append(f"  {name:<14} {EVAL.net_recovery(a, won, amt, DEFAULT_RATIO, COSTS):>14,.0f}")
     return "\n".join(lines)

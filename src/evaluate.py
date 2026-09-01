@@ -8,7 +8,7 @@ predictions.parquet). Reports, in rupees:
   * segmented metrics by reason code and amount band
   * rupee-denominated confusion matrix (FP = fee+analyst, FN = recoverable amount)
   * threshold sweep with net-recovery curve -> reports/net_recovery_curve.png
-  * the baseline comparison table (the headline): Contra vs fight-everything,
+  * the baseline comparison table (the headline): RokdaDaav vs fight-everything,
     fight-nothing, fight-if-amount>Rs2000, fight-if-p_win>0.5
 
 Money accounting (relative to the fight-nothing baseline, consistent with the
@@ -169,7 +169,7 @@ def main():
     print(f"  Brier {brier_score_loss(won, p):.4f}   ECE {ece(won, p):.4f}   "
           f"mean p_win {p.mean():.3f}   base win rate {won.mean():.3f}")
 
-    # --- Contra actions (used for P/R/F1, confusion, segments) ---
+    # --- RokdaDaav actions (used for P/R/F1, confusion, segments) ---
     contra = policy_contra(test, ratio, c, escalation_rate, hours_budget)
     fight = contra == DE.FIGHT
 
@@ -178,13 +178,13 @@ def main():
           f"recall {recall_score(won, fight):.3f}   F1 {f1_score(won, fight):.3f}")
     print(f"  ({fight.sum()} fought of {len(test)}; {won.sum()} winnable)")
 
-    hr("RUPEE CONFUSION MATRIX — Contra FIGHT decision")
+    hr("RUPEE CONFUSION MATRIX — RokdaDaav FIGHT decision")
     print(f"  {'cell':<26}{'count':>8}{'rupees':>16}")
     for k, (n, v) in rupee_confusion(contra, won, amount, c).items():
         print(f"  {k:<26}{n:>8}{v:>16,.0f}")
 
     # --- segments ---
-    hr("SEGMENTED NET RECOVERY (Contra) — by reason code")
+    hr("SEGMENTED NET RECOVERY (RokdaDaav) — by reason code")
     for rc in ["fraud", "inr", "nad", "subscription", "agent_initiated"]:
         m = test["reason_code"].to_numpy() == rc
         if m.sum():
@@ -192,7 +192,7 @@ def main():
             print(f"  {rc:<16} n={m.sum():>4}  net Rs {nr:>12,.0f}  "
                   f"fought {int((contra[m]==DE.FIGHT).sum()):>3}  won {int(won[m].sum()):>3}")
 
-    hr("SEGMENTED NET RECOVERY (Contra) — by amount band (INR)")
+    hr("SEGMENTED NET RECOVERY (RokdaDaav) — by amount band (INR)")
     bands = [(0, 2000), (2000, 6000), (6000, 15000), (15000, 1e12)]
     for lo, hi in bands:
         m = (amount >= lo) & (amount < hi)
@@ -215,26 +215,26 @@ def main():
         "fight nothing": policy_fight_none(test),
         f"fight if amount > Rs{amt_thr}": policy_fight_amount(test, amt_thr),
         "fight if p_win > 0.5": policy_fight_pwin(test, 0.5),
-        "Contra (EV + ratio + capacity)": contra,
+        "RokdaDaav (EV + ratio + capacity)": contra,
     }
     results = {name: net_recovery(a, won, amount, ratio, c) for name, a in policies.items()}
     print(f"  {'policy':<34}{'net recovery Rs':>18}")
     for name, nr in results.items():
-        star = "  <--" if name.startswith("Contra") else ""
+        star = "  <--" if name.startswith("RokdaDaav") else ""
         print(f"  {name:<34}{nr:>18,.0f}{star}")
 
     baseline = results[f"fight if amount > Rs{amt_thr}"]
-    contra_net = results["Contra (EV + ratio + capacity)"]
+    contra_net = results["RokdaDaav (EV + ratio + capacity)"]
     hr("VERDICT")
     diff = contra_net - baseline
     if diff > 0:
-        print(f"  Contra beats 'fight if amount > Rs{amt_thr}' by Rs {diff:,.0f} "
+        print(f"  RokdaDaav beats 'fight if amount > Rs{amt_thr}' by Rs {diff:,.0f} "
               f"(+{diff/abs(baseline)*100:.1f}%). There is a product.")
     else:
-        print(f"  Contra does NOT beat 'fight if amount > Rs{amt_thr}' "
+        print(f"  RokdaDaav does NOT beat 'fight if amount > Rs{amt_thr}' "
               f"(Rs {diff:,.0f}). Report honestly: no product yet.")
 
-    # --- ratio & capacity sensitivity (why Contra is more than a p_win threshold) ---
+    # --- ratio & capacity sensitivity (why RokdaDaav is more than a p_win threshold) ---
     hr("SENSITIVITY — dispute-ratio (refunds) and capacity")
     for r in [0.50, 0.85, 0.95]:
         a = policy_contra(test, r, c, escalation_rate, hours_budget)

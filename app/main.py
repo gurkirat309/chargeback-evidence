@@ -166,7 +166,7 @@ def warm():
 
 
 # ---- API --------------------------------------------------------------------
-app = FastAPI(title="Contra — Chargeback Evidence")
+app = FastAPI(title="RokdaDaav — Chargeback Evidence")
 
 
 @app.get("/api/warm_status")
@@ -242,7 +242,7 @@ def _baseline_table(ratio: float = RATIO):
         "fight nothing": 0.0,
         f"fight if amount > Rs{thr}": net(np.where(amt > thr, DE.FIGHT, DE.ACCEPT)),
         "fight if p_win > 0.5": net(np.where(_test["p_win"].to_numpy() > 0.5, DE.FIGHT, DE.ACCEPT)),
-        "Contra": net(contra),
+        "RokdaDaav": net(contra),
     }
 
 

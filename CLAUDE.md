@@ -1,4 +1,4 @@
-# CLAUDE.md — Project Contra
+# CLAUDE.md — Project RokdaDaav
 
 Read this file fully before writing any code. It defines scope, schema, and
 constraints. When a request conflicts with this file, say so instead of
@@ -357,9 +357,9 @@ model with rigorous metrics rather than a better model with vague ones.
 | fight nothing | |
 | fight if amount > ₹2,000 | |
 | fight if p_win > 0.5 | |
-| **Contra (EV + ratio + capacity)** | |
+| **RokdaDaav (EV + ratio + capacity)** | |
 
-If Contra does not beat "fight if amount > ₹2,000", there is no product. Report
+If RokdaDaav does not beat "fight if amount > ₹2,000", there is no product. Report
 it honestly either way.
 
 **Censored labels.** We only observe outcomes for cases that were fought. State

@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Contra — Chargeback Evidence & Dispute Triage</title>
+<title>RokdaDaav — Chargeback Evidence & Dispute Triage</title>
 <script defer src="https://cdn.jsdelivr.net/npm/alpinejs@3.14.1/dist/cdn.min.js"></script>
 <style>
   :root{
@@ -99,10 +99,10 @@
 </head>
 <body x-data="app()">
 <header><div class="wrap htop">
-  <div class="brand">Contra <small>Chargeback evidence &amp; dispute triage — AI Risk Manager (defense-only)</small></div>
+  <div class="brand">RokdaDaav <small>Fight only when it pays — chargeback triage · AI Risk Manager (defense-only)</small></div>
   <div class="baselines" x-show="summary">
     <template x-for="(v,k) in (summary?.baseline_table||{})" :key="k">
-      <div class="chip" :class="{'win':k==='Contra'}">
+      <div class="chip" :class="{'win':k==='RokdaDaav'}">
         <span class="k" x-text="k"></span><b x-text="rup(v)"></b>
       </div>
     </template>

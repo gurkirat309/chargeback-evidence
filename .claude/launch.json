@@ -2,7 +2,7 @@
   "version": "0.0.1",
   "configurations": [
     {
-      "name": "contra",
+      "name": "rokdadaav",
       "runtimeExecutable": "C:\\Fraud\\.venv\\Scripts\\python.exe",
       "runtimeArgs": ["app/main.py"],
       "port": 8000
