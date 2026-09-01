@@ -1,0 +1,8 @@
+{
+  "mcpServers": {
+    "contra": {
+      "command": "C:/Fraud/.venv/Scripts/python.exe",
+      "args": ["C:/Fraud/src/mcp_server.py"]
+    }
+  }
+}

@@ -149,6 +149,32 @@ we regenerate with looser weights. Current: **0.777** (PASS). The single tuning 
 - **Cost figures are directional.** Vendor-sourced constants in `config/costs.yaml`
   (Chargebacks911) are directional, not audited.
 
+## MCP server — Contra as a callable risk tool
+
+Contra is exposed over the **Model Context Protocol** (`src/mcp_server.py`), so an
+agentic host — a merchant's assistant, Claude Desktop, Cursor, or Claude Code —
+can *consult* it. The design point: the **agency lives in the host**, while the
+auditable, metric-backed substance stays in Contra's deterministic tools. Contra
+never becomes an unauditable agent; MCP is only the interface over the pure
+functions already built and tested. **Strictly defense-only**: no tool is
+offense-capable, and `draft_rebuttal` can only cite real, verifier-passed
+artifacts (fabrications are stripped).
+
+**Tools**: `list_disputes`, `score_winnability`, `assemble_evidence`,
+`decide_dispute`, `draft_rebuttal`, and `evaluate_policy` — the last returns net
+recovery, precision/recall/F1, and the rupee confusion matrix (false-positive
+cost) on the held-out test set, so the track's judging bar is a first-class,
+queryable capability rather than a buried slide. **Resources**:
+`contra://methodology`, `contra://metrics`.
+
+Wire it into a client (config in `.mcp.json`):
+
+```json
+{ "mcpServers": { "contra": {
+  "command": "C:/Fraud/.venv/Scripts/python.exe",
+  "args": ["C:/Fraud/src/mcp_server.py"] } } }
+```
+
 ## LLM layer (Phase 4)
 
 Three stages, all deterministic-by-cache:
