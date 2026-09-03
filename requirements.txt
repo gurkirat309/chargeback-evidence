@@ -16,5 +16,7 @@ fastapi==0.141.1
 uvicorn==0.52.4
 # MCP server — exposes the pipeline as tools for an agentic host
 mcp==2.1.1
+# Razorpay integration (test-mode API)
+razorpay
 # Tests
 pytest==9.1.1

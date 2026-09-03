@@ -448,6 +448,63 @@ def sim_events(n: int = 6):
     return {"events": [_razorpay_event(d) for d in ids]}
 
 
+# ---- REAL Razorpay (test-mode) connection ----------------------------------
+_RZP_CLIENT = None
+
+
+def _rzp_client():
+    kid = os.environ.get("RAZORPAY_KEY_ID")
+    ks = os.environ.get("RAZORPAY_KEY_SECRET")
+    if not kid or not ks:
+        return None
+    global _RZP_CLIENT
+    if _RZP_CLIENT is None:
+        import razorpay
+        _RZP_CLIENT = razorpay.Client(auth=(kid, ks))
+    return _RZP_CLIENT
+
+
+@app.get("/api/razorpay/status")
+def razorpay_status():
+    c = _rzp_client()
+    if c is None:
+        return {"connected": False, "mode": "simulated"}
+    try:
+        orders = c.order.all({"count": 1})
+        kid = os.environ.get("RAZORPAY_KEY_ID", "")
+        return {"connected": True, "mode": "test", "key_id": kid,
+                "orders_count": orders.get("count", 0)}
+    except Exception as exc:                                # noqa: BLE001
+        return {"connected": False, "mode": "error", "error": str(exc)[:120]}
+
+
+class _Submit(BaseModel):
+    dispute_id: str
+    ratio: float = RATIO
+
+
+@app.post("/api/razorpay/submit")
+def razorpay_submit(body: _Submit):
+    """Record a triaged FIGHT to the merchant's REAL Razorpay account. Test mode
+    has no dispute-contest-without-a-dispute, so we write a tagged order carrying
+    RokdaDaav's decision — a real, dashboard-visible artifact of the integration."""
+    tri = _triage(body.dispute_id, body.ratio)
+    c = _rzp_client()
+    if c is None:
+        return {"submitted": False, "mode": "simulated", "triage": tri}
+    try:
+        o = c.order.create({
+            "amount": int(round(tri["amount_inr"] * 100)), "currency": "INR",
+            "receipt": f"rd_contest_{body.dispute_id}"[:40],
+            "notes": {"source": "RokdaDaav", "dispute_id": body.dispute_id,
+                      "decision": tri["action"], "p_win": str(tri["p_win"]),
+                      "ev_fight_inr": str(tri["ev_fight_inr"])}})
+        return {"submitted": True, "mode": "test",
+                "razorpay_order_id": o["id"], "triage": tri}
+    except Exception as exc:                                # noqa: BLE001
+        return {"submitted": False, "mode": "error", "error": str(exc)[:160], "triage": tri}
+
+
 @app.get("/")
 def index():
     # no-store so edits to index.html always show on reload (demo convenience)
