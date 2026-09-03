@@ -16,15 +16,19 @@ Run:  python app/main.py --warm         # one-time, populates the LLM cache
 """
 from __future__ import annotations
 
+import hashlib
+import hmac
 import json
 import os
+import random
 import sys
+import time
 from pathlib import Path
 
 import pandas as pd
 import yaml
 from dotenv import load_dotenv
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException, Request
 from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
@@ -329,6 +333,119 @@ def ask(body: _Ask):
             steps.append({"tool": tc.function.name, "args": args, "result": result})
             msgs.append({"role": "tool", "tool_call_id": tc.id, "content": json.dumps(result)})
     return {"steps": steps, "answer": "(the assistant did not converge)"}
+
+
+# ---------------------------------------------------------------------------- #
+# Razorpay-native: consume a dispute webhook, auto-triage, return a contest
+# packet in Razorpay's format. SIMULATED — uses Razorpay's real payload/API
+# shapes so it is drop-in, but events are generated locally (no live account).
+# ---------------------------------------------------------------------------- #
+RZP_WEBHOOK_SECRET = os.environ.get("RAZORPAY_WEBHOOK_SECRET", "")  # optional
+
+# our reason_code -> a Razorpay-style dispute reason
+_RZP_REASON = {
+    "fraud": "fraudulent", "inr": "goods_or_services_not_received",
+    "nad": "goods_or_services_not_as_described",
+    "subscription": "recurring_transaction_cancelled",
+    "agent_initiated": "unrecognized_transaction",
+}
+
+
+def _short_id(s: str) -> str:
+    return hashlib.sha1(s.encode()).hexdigest()[:14]
+
+
+def _razorpay_event(did: str) -> dict:
+    """Build a Razorpay-shaped `dispute.created` webhook payload for one dispute."""
+    row = _DISPUTE_BY_ID.loc[did]
+    amt_paise = int(round(float(row["disputed_amount_inr"]) * 100))
+    now = int(time.time())
+    return {
+        "entity": "event", "event": "dispute.created", "created_at": now,
+        "payload": {"dispute": {"entity": {
+            "id": "disp_" + _short_id(did),
+            "payment_id": "pay_" + _short_id(did[::-1]),
+            "amount": amt_paise, "currency": "INR", "amount_deducted": amt_paise,
+            "reason_code": _RZP_REASON.get(row["reason_code"], "chargeback"),
+            "respond_by": now + 7 * 86400, "status": "open", "phase": "chargeback",
+            "created_at": now, "notes": {"rokdadaav_dispute_id": did},
+        }}},
+    }
+
+
+def _verify_signature(raw_body: bytes, sig: str) -> bool:
+    """Razorpay signs webhooks HMAC-SHA256. If no secret is configured we skip
+    (documented) — with a secret set, this is the real verification."""
+    if not RZP_WEBHOOK_SECRET:
+        return True
+    expected = hmac.new(RZP_WEBHOOK_SECRET.encode(), raw_body, hashlib.sha256).hexdigest()
+    return hmac.compare_digest(expected, sig or "")
+
+
+def _map_evidence(evidence_steps) -> dict:
+    """Map our artifacts to Razorpay contest-evidence categories."""
+    buckets = {"access_activity_log": [], "shipping_proof": [],
+               "customer_communication": [], "billing_proof": [], "other": []}
+    where = {"AVS result": "access_activity_log", "CVV result": "access_activity_log",
+             "3-D Secure": "access_activity_log", "IP origin": "access_activity_log",
+             "Device match": "access_activity_log", "Delivery proof": "shipping_proof",
+             "Support log": "customer_communication", "Consent record": "customer_communication",
+             "Refund policy": "customer_communication", "Product photos": "shipping_proof",
+             "Account tenure": "billing_proof", "Prior dispute record": "billing_proof"}
+    for s in evidence_steps:
+        for a in s["artifacts"]:
+            buckets[where.get(a["label"], "other")].append(
+                {"artifact_id": a["artifact_id"], "statement": a["statement"]})
+    return {k: v for k, v in buckets.items() if v}
+
+
+_ROUTING = {"FIGHT": "ready_to_submit", "ACCEPT": "auto_accepted",
+            "REFUND": "auto_refunded", "ESCALATE": "human_review"}
+
+
+def _triage(did: str, ratio: float) -> dict:
+    case = build_case(did, ratio)
+    dec = case["decision"]
+    action = "ESCALATE" if dec["escalated"] else dec["action"]
+    packet = None
+    if action == "FIGHT":
+        letter = case["letter"]
+        packet = {                                   # Razorpay "contest dispute" API shape
+            "action": "draft",                       # human approves before submit
+            "amount": int(round(case["disputed_amount_inr"] * 100)),
+            "summary": letter["framing"],
+            "explanation_letter": [c["claim"] for c in letter["claims"]],
+            "evidence": _map_evidence(case["evidence_steps"]),
+        }
+    return {
+        "dispute_id": did, "amount_inr": case["disputed_amount_inr"],
+        "reason": case["reason_code"], "p_win": round(case["p_win"], 2),
+        "action": action, "routing": _ROUTING[action],
+        "ev_fight_inr": round(float(dec["ev_fight"])),
+        "contest_packet": packet,
+    }
+
+
+@app.post("/webhook/razorpay/dispute")
+async def razorpay_webhook(request: Request, ratio: float = RATIO):
+    raw = await request.body()
+    if not _verify_signature(raw, request.headers.get("X-Razorpay-Signature", "")):
+        raise HTTPException(400, "invalid webhook signature")
+    evt = json.loads(raw or b"{}")
+    ent = evt.get("payload", {}).get("dispute", {}).get("entity", {})
+    did = ent.get("notes", {}).get("rokdadaav_dispute_id")
+    if not did or did not in CURATED:
+        raise HTTPException(404, "dispute not recognised in the demo set")
+    return {"received": True, "razorpay_dispute_id": ent.get("id"),
+            "respond_by": ent.get("respond_by"), "triage": _triage(did, ratio)}
+
+
+@app.get("/api/sim/events")
+def sim_events(n: int = 6):
+    """A batch of Razorpay-shaped dispute events for the dashboard to replay
+    through the webhook — the streaming 'incoming disputes' demo."""
+    ids = random.sample(CURATED, min(int(n), len(CURATED)))
+    return {"events": [_razorpay_event(d) for d in ids]}
 
 
 @app.get("/")

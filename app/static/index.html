@@ -119,6 +119,22 @@
     color:var(--ink);font-size:13px;line-height:1.55;white-space:pre-wrap;margin-top:4px}
   .pulse{animation:pulse 1s ease-in-out infinite}
   @keyframes pulse{0%,100%{opacity:.4}50%{opacity:1}}
+  /* live Razorpay triage feed */
+  .wh-note{font-size:11px;color:var(--dim);line-height:1.5}
+  .feed{display:flex;flex-direction:column;gap:5px;max-height:250px;overflow:auto;margin-top:10px}
+  .frow{display:grid;grid-template-columns:56px 1fr auto;gap:10px;align-items:center;
+    padding:8px 10px;background:#0f1420;border:1px solid var(--line);border-radius:7px;
+    font-size:12px;animation:slidein .3s ease}
+  @keyframes slidein{from{opacity:0;transform:translateY(-5px)}to{opacity:1;transform:none}}
+  .frow .tm{font-family:var(--mono);font-size:10px;color:var(--dim)}
+  .frow .rz{font-family:var(--mono);font-size:10px;color:var(--dim);display:block;margin-top:2px}
+  .route{font-size:11px;font-weight:700;margin-top:3px}
+  .route.sub{color:var(--good)} .route.acc{color:var(--mut)}
+  .route.ref{color:var(--warn)} .route.esc{color:var(--esc)}
+  .qitem{display:flex;justify-content:space-between;align-items:center;gap:8px;padding:9px 11px;
+    border:1px solid #295c3d;background:#12241a;border-radius:8px;margin-top:6px;font-size:12px}
+  .qitem.sent{border-color:var(--line);background:#0f1420;opacity:.7}
+  .btn.sm{padding:5px 12px;font-size:12px;font-weight:600}
 </style>
 </head>
 <body x-data="app()">
@@ -166,6 +182,52 @@
 
   <!-- detail -->
   <section class="stack">
+    <!-- live Razorpay dispute-webhook auto-triage -->
+    <div class="panel">
+      <h3>⚡ Live triage — Razorpay dispute webhook
+        <button class="btn sm" style="float:right;margin-top:-3px" @click="simulate()"
+                :disabled="simulating"
+                x-text="simulating?'receiving…':'▸ Simulate incoming Razorpay disputes'"></button>
+      </h3>
+      <div style="padding:12px">
+        <div class="wh-note">Razorpay fires a <b>dispute.created</b> webhook → RokdaDaav
+          auto-triages each one (no human) and prepares a submit-ready contest packet in
+          Razorpay's format. <span class="muted">(events simulated; real Razorpay payload/API shapes)</span></div>
+        <div class="feed">
+          <template x-for="f in feed" :key="f.key">
+            <div class="frow">
+              <span class="tm" x-text="f.time"></span>
+              <div><b x-text="rup(f.t.amount_inr)"></b> · <span class="rc" x-text="f.t.reason"></span>
+                <span class="rz" x-text="f.rzp + ' · p(win) ' + (f.t.p_win*100).toFixed(0) + '%'"></span></div>
+              <div style="text-align:right">
+                <span class="badge" :class="'b-'+f.t.action" x-text="f.t.action"></span>
+                <div class="route" :class="routeClass(f.t.routing)" x-text="routeLabel(f.t.routing)"></div>
+              </div>
+            </div>
+          </template>
+          <div class="none" x-show="!feed.length && !simulating">Click “Simulate incoming
+            Razorpay disputes” to watch them stream in and get handled live.</div>
+          <div class="none pulse" x-show="simulating">⏳ receiving dispute.created events from Razorpay…</div>
+        </div>
+
+        <template x-if="approveQ.length">
+          <div>
+            <div class="audit-h" style="margin-top:14px">Approve &amp; send queue — FIGHT cases
+              with a drafted letter (human-in-the-loop)</div>
+            <template x-for="q in approveQ" :key="q.rzp">
+              <div class="qitem" :class="{sent:q.sent}">
+                <div><b x-text="rup(q.t.amount_inr)"></b> · <span x-text="q.t.reason"></span>
+                  · EV <b x-text="rup(q.t.ev_fight_inr)"></b>
+                  <span class="rz" x-text="q.rzp"></span></div>
+                <button class="btn sm" x-show="!q.sent" @click="q.sent=true">Approve &amp; submit</button>
+                <span class="route sub" x-show="q.sent">✓ submitted to Razorpay (simulated)</span>
+              </div>
+            </template>
+          </div>
+        </template>
+      </div>
+    </div>
+
     <!-- in-dashboard live AI agent -->
     <div class="panel">
       <h3>Ask RokdaDaav — live AI agent (calls the tools itself)</h3>
@@ -302,6 +364,7 @@ function app(){
     summary:null, queue:[], selected:null, case_:null, shown:0, flash:null, _t:[],
     ratio:0.5, _rt:null,
     askq:'', asking:false, asteps:[], answer:'',
+    feed:[], simulating:false, approveQ:[], _fk:0,
     async init(){
       this.summary = await (await fetch('/api/summary')).json();
       this.ratio = this.summary.ratio;
@@ -334,6 +397,27 @@ function app(){
         setTimeout(()=>{ this.flash=null; }, 1500);
       });
     },
+    async simulate(){
+      if(this.simulating) return;
+      this.simulating=true; this.feed=[]; this.approveQ=[];
+      try{
+        const ev=await (await fetch('/api/sim/events?n=6')).json();
+        for(const e of ev.events){
+          const res=await (await fetch('/webhook/razorpay/dispute?ratio='+this.ratio,
+            {method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(e)})).json();
+          this.feed.unshift({key:this._fk++, time:new Date().toLocaleTimeString(),
+            rzp:res.razorpay_dispute_id, t:res.triage});
+          if(res.triage.routing==='ready_to_submit')
+            this.approveQ.unshift({rzp:res.razorpay_dispute_id, t:res.triage, sent:false});
+          await new Promise(r=>setTimeout(r,750));
+        }
+      }catch(e){ console.error(e); }
+      finally{ this.simulating=false; }
+    },
+    routeLabel(r){ return {ready_to_submit:'→ approve & send', auto_accepted:'auto-accepted',
+      auto_refunded:'auto-refunded (ratio relief)', human_review:'→ escalated to human'}[r]||r; },
+    routeClass(r){ return {ready_to_submit:'sub', auto_accepted:'acc',
+      auto_refunded:'ref', human_review:'esc'}[r]||''; },
     async doAsk(){
       if(!this.askq.trim() || this.asking) return;
       this.asking=true; this.asteps=[]; this.answer='';
