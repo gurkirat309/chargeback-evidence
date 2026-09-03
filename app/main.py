@@ -472,7 +472,10 @@ def razorpay_status():
     try:
         orders = c.order.all({"count": 1})
         kid = os.environ.get("RAZORPAY_KEY_ID", "")
-        return {"connected": True, "mode": "test", "key_id": kid,
+        # never surface the full key — mask to prefix + last 4 (it is only the
+        # public key id, but no credential belongs in the UI / a demo video)
+        masked = (kid[:8] + "…" + kid[-4:]) if len(kid) > 12 else "test"
+        return {"connected": True, "mode": "test", "key_id_masked": masked,
                 "orders_count": orders.get("count", 0)}
     except Exception as exc:                                # noqa: BLE001
         return {"connected": False, "mode": "error", "error": str(exc)[:120]}

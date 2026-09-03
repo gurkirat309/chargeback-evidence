@@ -194,7 +194,7 @@
       </h3>
       <div style="padding:12px">
         <div class="rzp-status">
-          <template x-if="rzp && rzp.connected"><span class="ok">🟢 Connected to your Razorpay account (test mode) · <code x-text="rzp.key_id"></code> · Approve &amp; submit writes a real order to your account</span></template>
+          <template x-if="rzp && rzp.connected"><span class="ok">🟢 Connected to your Razorpay account (test mode) · <code x-text="rzp.key_id_masked"></code> · Approve &amp; submit writes a real order to your account</span></template>
           <template x-if="rzp && !rzp.connected"><span class="no">⚪ Razorpay not connected — running in simulated mode</span></template>
         </div>
         <div class="wh-note">Razorpay fires a <b>dispute.created</b> webhook → RokdaDaav
