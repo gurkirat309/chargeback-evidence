@@ -24,7 +24,16 @@ ready for the agent demo (section 4).
    anomalous on device/IP — a naive model misreads them as fraud. We model them
    as their own reason code.
 
-### 1:20–2:20 · Live: one dispute, end to end (dashboard)
+### 1:20–1:50 · Live: it runs itself (Razorpay webhook)  ← OPEN WITH THIS
+On the dashboard, hit **"Simulate incoming Razorpay disputes."** Disputes stream
+in as `dispute.created` webhook events and get **auto-triaged in real time, no
+human** — FIGHT (→ approve & send queue), ACCEPT, REFUND, ESCALATE. FIGHT cases
+carry a drafted letter and a human "Approve & submit" step.
+- "When a dispute hits your Razorpay webhook, RokdaDaav decides in rupees and
+  prepares a submit-ready contest packet in Razorpay's own format — automatically."
+- This is the risk manager *running itself*, not a dashboard you click.
+
+### 1:50–2:20 · Live: one dispute, end to end (dashboard)
 Click a FIGHT case (e.g. an `inr` dispute, p_win ~0.89):
 - **Calibrated p(win)** — "89% isn't a vibe; test ECE is 0.056, so it's safe to
   multiply by rupees."
