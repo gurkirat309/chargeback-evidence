@@ -16,14 +16,18 @@ Run:  python app/main.py --warm         # one-time, populates the LLM cache
 """
 from __future__ import annotations
 
+import json
+import os
 import sys
 from pathlib import Path
 
 import pandas as pd
 import yaml
+from dotenv import load_dotenv
 from fastapi import FastAPI, HTTPException
 from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
+from pydantic import BaseModel
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "src"))
@@ -207,6 +211,124 @@ def dispute(did: str, ratio: float = RATIO):
     if did not in CURATED:
         raise HTTPException(404, "dispute not in curated demo set")
     return build_case(did, ratio)
+
+
+# ---------------------------------------------------------------------------- #
+# In-dashboard live agent: a Groq model DECIDES which RokdaDaav tools to call.
+# These are the same tools the MCP server exposes — here they run in-process.
+# ---------------------------------------------------------------------------- #
+load_dotenv(ROOT / ".env")
+_GROQ = None
+
+
+def _groq():
+    global _GROQ
+    if _GROQ is None:
+        from groq import Groq
+        _GROQ = Groq(api_key=os.environ.get("GROQ_API_KEY"))
+    return _GROQ
+
+
+def _chk(did):
+    if did not in CURATED:
+        raise ValueError(f"'{did}' is not in the demo set — call list_disputes first")
+
+
+def _t_list(ratio, limit=12):
+    dec = decided_at(ratio)
+    return [{"dispute_id": d, "reason": _DISPUTE_BY_ID.loc[d]["reason_code"],
+             "amount_inr": round(float(_DISPUTE_BY_ID.loc[d]["disputed_amount_inr"])),
+             "p_win": round(float(_PRED_BY_ID.loc[d]["p_win"]), 2),
+             "action": dec.loc[d]["action"]} for d in CURATED[: int(limit)]]
+
+
+def _t_score(did):
+    _chk(did)
+    return {"dispute_id": did, "p_win": round(float(_PRED_BY_ID.loc[did]["p_win"]), 3)}
+
+
+def _t_decide(did, ratio):
+    _chk(did)
+    d = decided_at(ratio).loc[did]
+    return {"dispute_id": did, "action": d["action"],
+            "ev_fight_inr": round(float(d["ev_fight"])),
+            "ev_refund_inr": round(float(d["ev_refund"])),
+            "chosen_ev_inr": round(float(d["chosen_ev"])),
+            "cost_to_fight_inr": round(DE.cost_to_fight(COSTS))}
+
+
+def _t_rebuttal(did, ratio):
+    _chk(did)
+    lp = build_case(did, ratio)["letter"]
+    return {"dispute_id": did, "framing": lp["framing"], "claims_kept": lp["n_kept"],
+            "claims": [x["claim"] for x in lp["claims"]]}
+
+
+def _t_evaluate(ratio):
+    return {"net_recovery_by_policy_inr": {k: round(v) for k, v in _baseline_table(ratio).items()}}
+
+
+_TOOL_FN = {
+    "list_disputes": lambda a, r: _t_list(r, a.get("limit", 12)),
+    "score_winnability": lambda a, r: _t_score(a["dispute_id"]),
+    "decide_dispute": lambda a, r: _t_decide(a["dispute_id"], a.get("current_ratio", r)),
+    "draft_rebuttal": lambda a, r: _t_rebuttal(a["dispute_id"], r),
+    "evaluate_policy": lambda a, r: _t_evaluate(a.get("current_ratio", r)),
+}
+
+
+def _tool(name, desc, props, required=()):
+    return {"type": "function", "function": {"name": name, "description": desc,
+            "parameters": {"type": "object", "properties": props, "required": list(required)}}}
+
+
+_TOOLS = [
+    _tool("list_disputes", "List the demo disputes with reason, amount, p_win and "
+          "RokdaDaav's recommended action.", {"limit": {"type": "integer"}}),
+    _tool("score_winnability", "Calibrated win probability for one dispute.",
+          {"dispute_id": {"type": "string"}}, ["dispute_id"]),
+    _tool("decide_dispute", "FIGHT/ACCEPT/REFUND/ESCALATE with the rupee EV breakdown.",
+          {"dispute_id": {"type": "string"}}, ["dispute_id"]),
+    _tool("draft_rebuttal", "The drafted rebuttal letter (framing + kept claims).",
+          {"dispute_id": {"type": "string"}}, ["dispute_id"]),
+    _tool("evaluate_policy", "Net recovery (Rs) per policy on the held-out test set.", {}),
+]
+
+_AGENT_SYS = ("You are a merchant's chargeback risk assistant. You have no knowledge "
+              "of specific disputes yourself — you MUST use the RokdaDaav tools to look "
+              "things up and decide. Keep it short; end with a clear recommendation, "
+              "in rupees where relevant.")
+
+
+class _Ask(BaseModel):
+    question: str
+    ratio: float = RATIO
+
+
+@app.post("/api/ask")
+def ask(body: _Ask):
+    msgs = [{"role": "system", "content": _AGENT_SYS},
+            {"role": "user", "content": body.question}]
+    steps = []
+    for _ in range(6):
+        resp = _groq().chat.completions.create(
+            model="openai/gpt-oss-120b", messages=msgs, tools=_TOOLS,
+            tool_choice="auto", temperature=0.2, max_tokens=1400, reasoning_effort="low")
+        m = resp.choices[0].message
+        if not m.tool_calls:
+            return {"steps": steps, "answer": (m.content or "").strip()}
+        msgs.append({"role": "assistant", "content": m.content or "",
+                     "tool_calls": [tc.model_dump() for tc in m.tool_calls]})
+        for tc in m.tool_calls:
+            try:
+                args = json.loads(tc.function.arguments or "{}")
+                result = _TOOL_FN[tc.function.name](args, body.ratio)
+            except Exception as exc:                       # noqa: BLE001
+                args = args if "args" in dir() else {}
+                result = {"error": str(exc)}
+            steps.append({"tool": tc.function.name, "args": args, "result": result})
+            msgs.append({"role": "tool", "tool_call_id": tc.id, "content": json.dumps(result)})
+    return {"steps": steps, "answer": "(the assistant did not converge)"}
 
 
 @app.get("/")

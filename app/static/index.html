@@ -105,6 +105,20 @@
   .doc ol{margin:8px 0;padding-left:22px} .doc li{margin:8px 0}
   .doc .ref{color:#8a6d3b;font-size:11px;font-family:var(--mono);white-space:nowrap}
   .audit-h{font-size:12px;color:var(--mut);margin:16px 0 8px;text-transform:uppercase;letter-spacing:.5px}
+  /* in-dashboard AI agent */
+  .ask-row{display:flex;gap:8px}
+  .ask-row input{flex:1;background:#0f1420;border:1px solid var(--line);color:var(--ink);
+    border-radius:8px;padding:10px 12px;font-size:13px}
+  .ask-row input:focus{outline:none;border-color:var(--accent)}
+  .askex{color:var(--dim);font-size:11px;margin-top:7px;line-height:1.5}
+  .transcript{margin-top:12px;display:flex;flex-direction:column;gap:6px}
+  .tstep{font-family:var(--mono);font-size:11px;color:var(--mut);background:#0f1420;
+    border:1px solid var(--line);border-radius:7px;padding:7px 9px;overflow-x:auto;white-space:nowrap}
+  .tstep b{color:var(--accent)}
+  .tanswer{background:#12241a;border:1px solid #295c3d;border-radius:8px;padding:11px 13px;
+    color:var(--ink);font-size:13px;line-height:1.55;white-space:pre-wrap;margin-top:4px}
+  .pulse{animation:pulse 1s ease-in-out infinite}
+  @keyframes pulse{0%,100%{opacity:.4}50%{opacity:1}}
 </style>
 </head>
 <body x-data="app()">
@@ -152,6 +166,28 @@
 
   <!-- detail -->
   <section class="stack">
+    <!-- in-dashboard live AI agent -->
+    <div class="panel">
+      <h3>Ask RokdaDaav — live AI agent (calls the tools itself)</h3>
+      <div style="padding:12px">
+        <div class="ask-row">
+          <input x-model="askq" @keydown.enter="doAsk()" :disabled="asking"
+                 placeholder="e.g. Should I fight DSP001561?  —  or:  which policy recovers the most?">
+          <button class="btn" @click="doAsk()" :disabled="asking" x-text="asking?'thinking…':'Ask'"></button>
+        </div>
+        <div class="askex">The AI decides which tools to call — you watch it happen. Try:
+          “Should I fight DSP001561?” · “Is DSP000864 worth fighting?” · “Prove RokdaDaav beats the baselines.”</div>
+        <div class="transcript" x-show="asking || answer || asteps.length">
+          <template x-for="(s,i) in asteps" :key="i">
+            <div class="tstep">🔧 called <b x-text="s.tool"></b>(<span x-text="JSON.stringify(s.args)"></span>)
+              → <span x-text="short(s.result)"></span></div>
+          </template>
+          <div class="tstep pulse" x-show="asking">⏳ the AI is deciding which tools to call…</div>
+          <div class="tanswer" x-show="answer" x-text="answer"></div>
+        </div>
+      </div>
+    </div>
+
     <div class="empty panel" x-show="!case_"><b>Select a dispute</b><br>from the queue to see its evidence, decision, and letter.</div>
 
     <template x-if="case_">
@@ -265,6 +301,7 @@ function app(){
   return {
     summary:null, queue:[], selected:null, case_:null, shown:0, flash:null, _t:[],
     ratio:0.5, _rt:null,
+    askq:'', asking:false, asteps:[], answer:'',
     async init(){
       this.summary = await (await fetch('/api/summary')).json();
       this.ratio = this.summary.ratio;
@@ -297,6 +334,19 @@ function app(){
         setTimeout(()=>{ this.flash=null; }, 1500);
       });
     },
+    async doAsk(){
+      if(!this.askq.trim() || this.asking) return;
+      this.asking=true; this.asteps=[]; this.answer='';
+      try{
+        const r=await fetch('/api/ask',{method:'POST',headers:{'Content-Type':'application/json'},
+          body:JSON.stringify({question:this.askq, ratio:this.ratio})});
+        const j=await r.json(); this.asteps=j.steps||[];
+        this.answer=(j.answer||'(no answer)').replace(/\*\*/g,'').replace(/^\s*[-*]\s+/gm,'• ');
+      }catch(e){ this.answer='error: '+e; }
+      finally{ this.asking=false; }
+    },
+    short(res){ const s=typeof res==='string'?res:JSON.stringify(res);
+      return s.length>150 ? s.slice(0,150)+'…' : s; },
     picked(a){ const d=this.case_.decision; return (d.escalated? d.base_action : d.action)===a; },
     zoneText(){ if(!this.summary) return ''; const t=this.summary.vamp_threshold, b=this.summary.vamp_band;
       if(this.ratio < t-b) return '· safe zone';
