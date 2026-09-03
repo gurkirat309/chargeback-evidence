@@ -95,6 +95,16 @@
   .ratiobar input[type=range]{flex:1;min-width:220px;accent-color:var(--accent)}
   .rlabel{font-size:13px;color:var(--mut)} .rlabel b{color:var(--ink)}
   .warn{color:var(--warn)} .bad{color:var(--bad)}
+  /* the actual formatted letter — a paper document */
+  .doc{background:#f7f5ef;color:#1e1b16;border-radius:8px;padding:20px 22px;
+    font-family:Georgia,'Times New Roman',serif;line-height:1.55;font-size:14px}
+  .doc p{margin:10px 0}
+  .doc-h{font-weight:700;letter-spacing:.4px;font-size:13px;text-transform:uppercase;
+    border-bottom:1px solid #d8d2c4;padding-bottom:8px;margin-bottom:10px}
+  .doc-meta{color:#5a5346;font-size:12px;margin-bottom:12px}
+  .doc ol{margin:8px 0;padding-left:22px} .doc li{margin:8px 0}
+  .doc .ref{color:#8a6d3b;font-size:11px;font-family:var(--mono);white-space:nowrap}
+  .audit-h{font-size:12px;color:var(--mut);margin:16px 0 8px;text-transform:uppercase;letter-spacing:.5px}
 </style>
 </head>
 <body x-data="app()">
@@ -204,24 +214,43 @@
 
         <!-- letter -->
         <div class="panel">
-          <h3>Rebuttal letter — every claim cites a verified artifact</h3>
+          <h3>Rebuttal letter — the document RokdaDaav would submit</h3>
           <div class="letter">
-            <div class="cov">citation coverage 100% · verifier kept
-              <b x-text="case_.letter.n_kept"></b> of <b x-text="case_.letter.n_generated"></b> generated claims
-              <span class="muted" x-show="case_.letter.stripped.length">(unsupported claims stripped below)</span>
+            <!-- the actual formatted representment letter -->
+            <div class="doc">
+              <div class="doc-h">Representment — Chargeback Rebuttal</div>
+              <div class="doc-meta">Re: Dispute <b x-text="case_.dispute_id"></b> ·
+                reason <b x-text="case_.reason_code"></b> ·
+                disputed amount <b x-text="rup(case_.disputed_amount_inr)"></b></div>
+              <p>To the issuing bank / card network,</p>
+              <p x-text="case_.letter.framing"></p>
+              <p>We respectfully contest this chargeback on the following documented evidence:</p>
+              <ol>
+                <template x-for="c in case_.letter.claims" :key="'doc'+c.artifact_id+c.claim">
+                  <li><span x-text="c.claim"></span>
+                    <span class="ref" x-text="'[Ref '+c.artifact_id+']'"></span></li>
+                </template>
+              </ol>
+              <p>On the strength of the evidence above, we request that the chargeback be
+                reversed and the transaction upheld.</p>
+              <p style="margin-bottom:0">Sincerely,<br>Merchant Risk Operations · RokdaDaav</p>
             </div>
-            <div class="framing" x-text="case_.letter.framing"></div>
+
+            <!-- audit trail: what the verifier kept vs stripped -->
+            <div class="audit-h">Audit trail — <b x-text="case_.letter.n_kept"></b> of
+              <b x-text="case_.letter.n_generated"></b> AI-drafted claims kept;
+              the verifier stripped the rest. Click a line to see its source evidence.</div>
             <template x-for="c in case_.letter.claims" :key="c.artifact_id+c.claim">
               <div class="claim" @click="cite(c.artifact_id)">
                 <span class="dot">✓</span>
-                <div style="flex:1"><div x-text="c.claim"></div><div class="cite" x-text="'cites '+c.artifact_id"></div></div>
+                <div style="flex:1"><div x-text="c.claim"></div><div class="cite" x-text="'cites '+c.artifact_id+' — click to view'"></div></div>
               </div>
             </template>
             <template x-for="c in case_.letter.stripped" :key="'s'+c.artifact_id+c.claim">
               <div class="claim strip" @click="cite(c.artifact_id)">
                 <span class="dot">✗</span>
                 <div style="flex:1"><div x-text="c.claim"></div>
-                  <div class="cite" style="color:var(--bad)" x-text="'stripped — '+c.reason"></div></div>
+                  <div class="cite" style="color:var(--bad)" x-text="'STRIPPED by verifier — '+c.reason"></div></div>
               </div>
             </template>
           </div>

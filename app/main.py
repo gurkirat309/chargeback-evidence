@@ -211,7 +211,8 @@ def dispute(did: str, ratio: float = RATIO):
 
 @app.get("/")
 def index():
-    return FileResponse(STATIC / "index.html")
+    # no-store so edits to index.html always show on reload (demo convenience)
+    return FileResponse(STATIC / "index.html", headers={"Cache-Control": "no-store"})
 
 
 app.mount("/static", StaticFiles(directory=str(STATIC)), name="static")
