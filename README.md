@@ -1,209 +1,244 @@
 # RokdaDaav — *Fight Only When It Pays.*
 
-Chargeback evidence & dispute triage for online merchants.
+An **AI risk manager for chargebacks**. When a customer disputes a card payment, a
+merchant can contest it (a "representment") or accept the loss. Contesting costs a
+fee plus staff time, so **fighting a case you will lose is negative expected value**.
+RokdaDaav gathers evidence, predicts P(win) with a *calibrated* model, decides
+**FIGHT / ACCEPT / REFUND / ESCALATE** with explicit rupee arithmetic, writes the
+evidence-backed rebuttal letter, and proves on a held-out test set that its policy
+recovers more money than the obvious rules.
 
-A chargeback dispute triage and representment system for online merchants. When a
-customer disputes a card transaction, contesting it costs money and staff time, so
-contesting a case you will lose is negative expected value. RokdaDaav gathers evidence,
-predicts P(win) with a calibrated model, and decides FIGHT / ACCEPT / REFUND /
-ESCALATE using explicit rupee arithmetic.
+> **Hackathon track:** AI Risk Manager. **Strictly defense-only** — nothing here
+> generates consumer dispute claims; every letter cites only real, verified evidence.
+> Full scope and schema in [`CLAUDE.md`](CLAUDE.md).
 
-> Hackathon track: **AI Risk Manager**. Strictly **defense-only** — nothing here
-> generates consumer dispute claims. See [`CLAUDE.md`](CLAUDE.md) for full scope.
+---
 
-## Status
+## The result (held-out test set, n = 566)
 
-**All six phases complete:** synthetic dispute generator, winnability model
-(calibrated logistic regression), decision engine (pure EV arithmetic, unit
-tested), evidence agent + LLM letter/verifier (Groq), evaluation harness (§12),
-and the **dashboard** (§15 step 6).
+| policy | net recovery ₹ |
+|---|---:|
+| fight everything | 19,72,116 |
+| fight nothing | 0 |
+| fight if amount > ₹2,000 | 20,28,095 |
+| fight if p_win > 0.5 | 18,15,433 |
+| **RokdaDaav (EV + ratio + capacity)** | **24,44,442** |
+
+**RokdaDaav beats the strongest simple baseline by +20.5%.** It also beats the best
+*single* p_win threshold — because it ranks on **expected value (p_win × amount)**
+under an analyst-hour budget, not on probability or amount alone. The split is
+**temporal** (train on the past, test on the future) and the **false-positive cost**
+(fought-and-lost = fee + analyst time) is priced into the numbers. Test calibration:
+Brier 0.185, ECE 0.056 — a 0.7 really wins ~70% of the time, so it's safe to multiply
+by rupees.
+
+---
+
+## How it works
+
+```mermaid
+flowchart TD
+  A["IEEE-CIS transactions<br/>(590k, real)"] --> B["Synthetic dispute generator<br/>generate_data.py + verify_data.py"]
+  B --> C["Winnability model<br/>calibrated logistic regression<br/>train_model.py"]
+  C -->|"p_win (calibrated)"| D["Decision engine (pure, unit-tested)<br/>EV_fight = p_win·amount − cost<br/>FIGHT / ACCEPT / REFUND / ESCALATE"]
+  D --> E["Evidence agent<br/>fixed 8-step bundle · evidence_agent.py"]
+  E --> F["LLM generator (Groq)<br/>claims, each citing an artifact"]
+  F --> G["LLM verifier (separate model)<br/>strips unsupported claims"]
+  G --> H["Cited rebuttal letter"]
+  D --> I["Evaluation harness<br/>+20.5% vs baseline · evaluate.py"]
+
+  subgraph SURF ["Surfaces (read the outputs above)"]
+    J["Dashboard (FastAPI + Alpine)"]
+    K["MCP server (tools for any AI host)"]
+    L["Razorpay webhook + real API"]
+  end
+  D --> J
+  D --> K
+  L -->|"dispute.created"| D
+  D -->|"contest packet"| L
+```
+
+A single dispute enters at the top and a **decision + a cited letter** come out the
+bottom — every step deterministic and auditable except the two LLM calls, which are
+themselves checked by a second model. The whole thing is **reproducible from one
+seed**; the LLM responses are cached, so once warmed the demo needs no live call.
+
+---
+
+## What it does — feature map
+
+**Core decisioning**
+- **Winnability model** (`src/train_model.py`, `src/features.py`) — a calibrated
+  logistic regression. We ship LR over LightGBM because the outcome DGP is an additive
+  logit, so LR is correctly specified *and* better calibrated. Temporal test AUC ≈ 0.78.
+- **Decision engine** (`src/decision_engine.py`) — pure rupee arithmetic, no ML/LLM/
+  randomness, **17 unit tests**. Chooses the max-EV action, escalates the top 10% by
+  `uncertainty × amount` to a human, then schedules FIGHTs under an analyst-hour budget
+  with 48h deadline pre-emption.
+
+**Evidence & letter** (`src/evidence_agent.py`, `src/llm_generator.py`, `src/llm_verifier.py`)
+- A **fixed 8-step evidence agent** (deliberately *not* agentic) assembles a numbered
+  bundle; every artifact has a resolvable `artifact_id`.
+- The **generator** writes claims that each cite an artifact; a **separate verifier**
+  strips any it can't support. Measured: 100% citation coverage, ~8% of claims
+  stripped, 0% hallucination-under-stress, adversarial fabrications caught 5/5.
+
+**Honest evaluation** (`src/evaluate.py`)
+- Baseline table (above), precision/recall/F1 on the FIGHT decision, calibration
+  (Brier/ECE + reliability diagram), segmented metrics, a **rupee confusion matrix**
+  (prices false positives), and a net-recovery threshold sweep.
+
+**Surfaces & agents**
+- **Dashboard** (`app/`) — FastAPI + Alpine, no build step. Animates the 8-step agent,
+  shows the rupee EV math, renders the letter with click-to-cite, and a dispute-ratio
+  slider that surfaces the REFUND behaviour live.
+- **Ask RokdaDaav** — an in-dashboard agent: a live Groq model *decides which tools to
+  call* to answer a plain-English question.
+- **MCP server** (`src/mcp_server.py`) — exposes the pipeline as Model-Context-Protocol
+  tools so any AI host (Claude Desktop, Cursor, Claude Code) can consult it. Agency
+  lives in the host; the auditable substance stays in RokdaDaav.
+- **Razorpay integration** (`app/main.py`) — connects to a **real Razorpay test
+  account**, auto-triages `dispute.created` webhook events, and writes a real,
+  dashboard-visible order carrying the decision. (Dispute *events* are simulated
+  because test mode doesn't emit them on demand — the connection and writes are real.)
+
+**Fraud intelligence (AI)**
+- **Abuse-ring detective** (`src/abuse_rings.py`) — clusters the dispute stream by
+  shared signature (device fingerprint, card BIN, shipping city), flags coordinated
+  friendly-fraud rings, and the AI narrates each with a defensive action. Reported on
+  a known-answer eval: **precision 1.00, recall 0.79** (one stealth ring evades on
+  purpose — stated openly).
+- **What-if evidence advisor** — turns *predict* into *advise*: re-scores the model on
+  counterfactual evidence to tell a merchant the cheapest document to gather to make a
+  losing case winnable (e.g. *13% ACCEPT → add the consent record → 33%, flips to a
+  +₹3,770 FIGHT*).
+
+---
+
+## The two ideas that make it distinct
+
+1. **Sometimes refund a case you'd win.** A dispute counts toward the card network's
+   monitoring ratio (e.g. Visa VAMP) even if you win the representment. Near the fine
+   threshold, an immediate refund beats the recovery. Modelled as a `ratio_benefit`
+   term — drag the dashboard slider to watch cases flip to REFUND.
+2. **Agent-initiated disputes are their own class.** AI shopping agents buy
+   autonomously; the buyer disputes to undo it. They authenticate correctly but look
+   anomalous on device/IP, so a naive model calls them fraud. RokdaDaav models them as
+   their own reason code with a distinct evidence signature.
+
+---
+
+## Run it
+
+**Prerequisites:** Python 3.13; the two IEEE-CIS files at `data/raw/train_transaction.csv`
+and `data/raw/train_identity.csv`; a `.env` with `GROQ_API_KEY` (and, for the live
+Razorpay demo, `RAZORPAY_KEY_ID` / `RAZORPAY_KEY_SECRET`). `.env` is gitignored.
+
+```bash
+python -m venv .venv
+.venv\Scripts\python.exe -m pip install -r requirements.txt   # Windows
+# macOS/Linux: source .venv/bin/activate && pip install -r requirements.txt
+```
+
+Build the pipeline (in order — each step is a few seconds):
+
+| # | command | produces |
+|---|---|---|
+| 1 | `python src/generate_data.py` | the synthetic dispute layer → `data/processed/*.parquet` |
+| 2 | `python src/verify_data.py` | 8 sanity checks (leakage AUC, reason mix, censoring, agent signature) |
+| 3 | `python src/train_model.py` | calibrated model + `predictions.parquet` + `reports/calibration.png` |
+| 4 | `python src/evaluate.py` | the headline table + `reports/net_recovery_curve.png` |
+| 5 | `python -m pytest tests/ -q` | 17 decision-engine unit tests |
 
 Run the dashboard:
 
 ```bash
 python app/main.py --warm      # one-time: warm the LLM cache for the demo cases
-python app/main.py             # serve on http://127.0.0.1:8000
+python app/main.py             # serve → http://127.0.0.1:8000
 ```
 
-The dashboard animates the 8-step evidence agent, shows the rupee EV arithmetic
-behind each FIGHT / ACCEPT / REFUND / ESCALATE decision, renders the rebuttal
-letter with claims that click through to their cited artifact, and has a
-merchant dispute-ratio slider — drag it over the VAMP threshold to watch
-winnable cases flip to REFUND for ratio relief (idea A above), live.
+Run the MCP server (or wire it into a client via the committed `.mcp.json`):
 
-### Headline result (`src/evaluate.py`, temporal test split, n=566)
+```bash
+python src/mcp_server.py       # stdio
+```
 
-| policy | net recovery ₹ |
-|---|---:|
-| fight everything | 1,972,116 |
-| fight nothing | 0 |
-| fight if amount > ₹2,000 | 2,028,095 |
-| fight if p_win > 0.5 | 1,815,433 |
-| **RokdaDaav (EV + ratio + capacity)** | **2,444,442** |
+Everything under `data/` and `reports/` is regenerable from the seed.
 
-RokdaDaav beats the "fight if amount > ₹2,000" bar by **+20.5%**. It also beats the
-best *single* p_win threshold (₹2.12M at t≈0.04) — because it ranks on expected
-value (p_win × amount) under an analyst-hour budget, not on p_win or amount alone.
-Test calibration: Brier 0.185, ECE 0.056. Net figures are recovery relative to
-the fight-nothing baseline, consistent with the §9 EVs.
-
-> **LLM provider note.** CLAUDE.md §11 specifies `claude-sonnet-4-6` via the
-> Anthropic API. Per the maintainer's direction this build uses **Groq**
-> (`openai/gpt-oss-120b` generator, `openai/gpt-oss-20b` verifier; key in `.env`
-> as `GROQ_API_KEY`, never committed). Everything else in §11 is preserved: two
-> calls, an independent verifier, and every response cached to `data/llm_cache/`
-> keyed by an input hash — so once warmed, the demo needs no live call.
-
-## Two ideas that make this distinct
-
-1. **Sometimes refund a case you would win.** A dispute counts toward the card
-   network's monitoring ratio even when you win the representment. Near a program
-   threshold, immediate refund can beat recovery. Modelled as a `ratio_benefit` term.
-2. **Agent-initiated disputes are their own class.** AI shopping agents buy
-   autonomously; the buyer disputes to undo it. These authenticate correctly but look
-   anomalous on device/IP — a naive model misreads them as fraud.
+---
 
 ## Data
 
-Uses the [IEEE-CIS Fraud Detection](https://www.kaggle.com/c/ieee-fraud-detection)
-dataset (not redistributed here — gitignored). Place the two training files at:
+[IEEE-CIS Fraud Detection](https://www.kaggle.com/c/ieee-fraud-detection) — 590k card
+transactions over a 182-day window (~24% carry an identity record). It is not
+redistributed here (gitignored). **There is no public dataset of chargeback
+outcomes**, so we generate a synthetic dispute layer on top and say so everywhere.
+
+---
+
+## Tech stack
+
+Python 3.13 · pandas / numpy / scikit-learn / lightgbm · FastAPI + uvicorn · Alpine.js
+(CDN, no build) · Groq (`openai/gpt-oss-120b` generator, `openai/gpt-oss-20b` verifier)
+· MCP (`mcp` SDK) · Razorpay test API · matplotlib · pytest.
+
+> **LLM provider note.** CLAUDE.md §11 specifies `claude-sonnet-4-6` via the Anthropic
+> API; per the maintainer's direction this build uses **Groq**. Everything else in §11
+> is preserved: two calls, an independent verifier, and every response cached to
+> `data/llm_cache/` keyed by an input hash.
+
+---
+
+## Repo layout
 
 ```
-data/raw/train_transaction.csv
-data/raw/train_identity.csv
-```
-
-590k transactions over a 182-day window; only ~24% carry an identity record. We
-generate a synthetic dispute layer on top — there is no public dataset of chargeback
-outcomes, and that limitation is stated openly.
-
-## Setup
-
-```bash
-python -m venv .venv
-./.venv/Scripts/python.exe -m pip install -r requirements.txt   # Windows
-# or:  source .venv/bin/activate && pip install -r requirements.txt
-```
-
-## Run Phase 1
-
-```bash
-./.venv/Scripts/python.exe src/generate_data.py    # writes data/processed/*.parquet
-./.venv/Scripts/python.exe src/verify_data.py      # prints the 8 verification checks
-```
-
-The generator is driven entirely by `config/generator.yaml` and `config/costs.yaml`
-— no magic numbers in the Python. Reproducible from a single seed. Runs in <10s.
-
-## Key design decisions (Phase 1)
-
-- **Subset spans the full window.** We take a 200k evenly-strided subset across all
-  182 days (`sampling.mode: span`), not the first 200k, so the temporal split covers
-  the real 6 months and right-censoring is a small honest tail rather than ~40%.
-- **No deterministic evidence→outcome rule.** Outcome is an additive logit over
-  observable evidence + an *unobserved* issuer-leniency term + Gaussian noise, then a
-  Bernoulli draw. The unobserved term and noise cap achievable performance on purpose.
-- **Per-reason intercept is Jensen-corrected.** Win rate is `sigmoid(logit)`; a wide
-  logit spread pulls the mean toward 0.5, so each reason's intercept is solved so the
-  *realised* mean win rate matches the §7 target.
-- **Reason-conditional filing lag.** Time-to-file is a real dispute signal, so the lag
-  is drawn per reason code: fraud is noticed on the statement (~18d), item-not-received
-  waits out the delivery window (~28d), subscription is caught only after a billing
-  cycle (~32d, long tail), agent-initiated is a fast undo (~8d).
-- **Split on `filed_dt`, drop right-censored.** In production we decide when a dispute
-  is *filed*, so the temporal split is on filing date, not transaction date. A dispute
-  is observed only if filed before `observation_end = last-transaction day +
-  observation_buffer_days`; later filings are dropped, never clipped. The buffer
-  (14 days) models the real gap between the last transaction and the data-extract date
-  — without it, censoring maxes out (~13%) by assuming extract at the instant of the
-  final transaction. At 14 days censoring is ~5%, and because slow-filing reasons
-  censor more, the *observed* reason mix drifts slightly toward fast-filing reasons
-  (fraud/agent) relative to the generated mix — a realistic censoring bias, reported by
-  the verifier.
-- **`device_match_status` is three-state** (`matched` / `mismatched` / `unknown`).
-  `unknown` = no identity record (three quarters of data); a boolean would encode
-  missingness rather than signal.
-
-## Leakage acceptance criterion
-
-A plain logistic regression on the evidence features, evaluated on the temporal test
-split, must land **AUC in 0.72–0.80**. Above 0.85 means the generator is leaking and
-we regenerate with looser weights. Current: **0.777** (PASS). The single tuning knob is
-`outcome.weight_scale`.
-
-## Limitations (honest)
-
-- **182 days is short for drift analysis.** The temporal split guards against
-  look-ahead leakage; it does **not** demonstrate resistance to long-run drift.
-- **Agent-initiated share is set for evaluation power, not realism.** It is 15% of
-  disputes (~300 cases, ~90 in the test split) so the differentiating class has enough
-  test mass for segment metrics with usable confidence intervals; a realistic share
-  would be low single digits. Because agent cases require an *observed* (mismatched)
-  device, they need an identity record, which caps how strongly no-identity
-  transactions can be over-represented elsewhere.
-- **`consent_record_exists` is general evidence, not subscription-only.** It is present
-  at ~58–79% across all reason codes (verifier check 4b), so it is not a reason-code
-  proxy; its correlation with `won` reflects its outcome weight. It carries the most
-  weight for subscription cases.
-- **Censored labels.** In production we only observe outcomes for cases that were
-  fought, so real training data is biased; correcting it needs a randomized holdout.
-  A naive `fought` column is included to make this structure discussable.
-- **Cost figures are directional.** Vendor-sourced constants in `config/costs.yaml`
-  (Chargebacks911) are directional, not audited.
-
-## MCP server — RokdaDaav as a callable risk tool
-
-RokdaDaav is exposed over the **Model Context Protocol** (`src/mcp_server.py`), so an
-agentic host — a merchant's assistant, Claude Desktop, Cursor, or Claude Code —
-can *consult* it. The design point: the **agency lives in the host**, while the
-auditable, metric-backed substance stays in RokdaDaav's deterministic tools. RokdaDaav
-never becomes an unauditable agent; MCP is only the interface over the pure
-functions already built and tested. **Strictly defense-only**: no tool is
-offense-capable, and `draft_rebuttal` can only cite real, verifier-passed
-artifacts (fabrications are stripped).
-
-**Tools**: `list_disputes`, `score_winnability`, `assemble_evidence`,
-`decide_dispute`, `draft_rebuttal`, and `evaluate_policy` — the last returns net
-recovery, precision/recall/F1, and the rupee confusion matrix (false-positive
-cost) on the held-out test set, so the track's judging bar is a first-class,
-queryable capability rather than a buried slide. **Resources**:
-`rokdadaav://methodology`, `rokdadaav://metrics`.
-
-Wire it into a client (config in `.mcp.json`):
-
-```json
-{ "mcpServers": { "rokdadaav": {
-  "command": "C:/Fraud/.venv/Scripts/python.exe",
-  "args": ["C:/Fraud/src/mcp_server.py"] } } }
-```
-
-## LLM layer (Phase 4)
-
-Three stages, all deterministic-by-cache:
-
-- **Evidence agent** (`src/evidence_agent.py`) — a fixed 8-step lookup sequence
-  (deliberately *not* agentic) that assembles a numbered bundle; every artifact
-  carries an `artifact_id` resolving to a source record. Only artifacts that
-  actually exist are emitted, so the generator can never cite an absent one.
-- **Generator** (`src/llm_generator.py`) — sees only the bundle + reason code,
-  returns `{framing, claims:[{claim, artifact_id}]}`. No `p_win`, no decision.
-- **Verifier** (`src/llm_verifier.py`) — a separate, smaller model; for each
-  claim it sees the claim and its cited artifact and returns
-  `{supported, reason}`. Unsupported claims are stripped before assembly — the
-  letter gets shorter, never invented.
-
-Run the demo/metrics: `python src/llm_demo.py --n 12`. Measured on a 12-dispute
-test sample: **citation coverage 100%**, verifier **strips ~8%** of generated
-claims as unsupported, **hallucination-under-stress 0%** (delete a cited artifact,
-regenerate — the deleted fact is not re-asserted), and an adversarial probe
-(fabricated claims that contradict their artifact) is **caught 5/5**.
-
-## Layout
-
-```
-config/            costs.yaml, generator.yaml   (all constants live here)
-src/               generate_data.py, verify_data.py
-data/raw/          IEEE-CIS input (gitignored)
-data/processed/    generated parquet (gitignored)
+config/            costs.yaml, generator.yaml, llm.yaml   (every constant lives here)
+src/
+  generate_data.py verify_data.py     # phase 1 — synthetic disputes + verifier
+  features.py train_model.py          # phase 2 — calibrated winnability model
+  decision_engine.py                  # phase 3 — pure rupee EV (unit-tested)
+  evidence_agent.py llm_generator.py llm_verifier.py llm_demo.py   # phase 4 — letter
+  evaluate.py                         # phase 5 — honest metrics
+  mcp_server.py                       # MCP tools
+  abuse_rings.py                      # abuse-ring detective
+app/               main.py, static/index.html    # dashboard + Razorpay + agents
+tests/             test_decision_engine.py       # 17 tests
+data/raw/          IEEE-CIS input        (gitignored)
+data/processed/    generated parquet     (gitignored)
+data/llm_cache/    cached LLM responses  (gitignored)
+reports/           calibration + net-recovery plots
 CLAUDE.md          project contract — scope, schema, constraints
 ```
+
+---
+
+## Design notes (the ML rigor)
+
+- **Correctly-specified model.** The generator makes outcomes an additive logit over
+  observable evidence + an *unobserved* issuer-leniency term + Gaussian noise. So we
+  ship calibrated logistic regression (it beat LightGBM on AUC *and* calibration), and
+  the noise/unobserved term cap achievable AUC on purpose (target 0.72–0.80; got 0.78).
+- **Full-window temporal split, on `filed_dt`.** We decide when a dispute is *filed*,
+  so the split is on filing date, not transaction date. Disputes filed past the
+  observation window are dropped (right-censored), never clipped.
+- **Jensen-corrected base rates.** Each reason code's intercept is solved so the
+  *realised* mean win rate matches the target given the evidence spread.
+- **Three-state `device_match_status`** (`matched`/`mismatched`/`unknown`) — `unknown`
+  = no identity record (75% of data); a boolean would encode missingness, not signal.
+
+---
+
+## Honest limitations (stated, not hidden)
+
+- **Synthetic dispute layer.** No public chargeback-outcome data exists; the impressive
+  result is "our policy beats simple baselines *on our simulated world*", with real
+  rigor (temporal split, calibration, false-positive cost). The data is modeled.
+- **182 days is short** to claim resistance to long-run drift; the split guards against
+  look-ahead leakage only.
+- **Censored labels.** In production you observe outcomes only for *fought* cases, so
+  training data is biased; correcting it needs a randomized holdout. A naive `fought`
+  column is included to make this discussable.
+- **Razorpay events are simulated** (test mode emits no disputes on demand); the API
+  connection, signature verification, and order writes are real.
+- **Cost constants are vendor-directional** (Chargebacks911), stated in `config/costs.yaml`.
+- **Strictly defense-only.** Nothing generates disputes; the letter cannot fabricate.
