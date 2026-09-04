@@ -27,6 +27,7 @@ secrets.*
 docs/PITCH.md
 docs/VIDEO_SCRIPT.md
 video_script.txt
+video_script.md
 
 # OS / editor
 .DS_Store
