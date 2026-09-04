@@ -147,6 +147,14 @@
   .ring-risk{margin-left:auto;font-size:11px;color:var(--bad);font-weight:700}
   .ring-traits{font-family:var(--mono);font-size:11px;color:var(--dim);margin:6px 0;word-break:break-word}
   .ring-ai{font-size:13px;color:var(--ink);line-height:1.5;border-left:3px solid #5c2932;padding-left:10px}
+  /* what-if evidence advisor */
+  .wi-base{font-size:13px;color:var(--mut)} .wi-base b{color:var(--ink)}
+  .wi-lever{display:flex;gap:10px;align-items:center;padding:8px 10px;border:1px solid var(--line);
+    border-radius:8px;margin-top:6px;background:#0f1420;font-size:13px}
+  .wi-lift{font-family:var(--mono);font-size:12px;color:var(--good);white-space:nowrap;text-align:right}
+  .flip{display:inline-block;margin-left:6px;font-size:10px;background:#12331f;color:var(--good);
+    border:1px solid #295c3d;border-radius:20px;padding:1px 8px;font-weight:700}
+  .wi-combined{margin-top:8px;font-size:13px;color:var(--mut)} .wi-combined b{color:var(--good)}
 </style>
 </head>
 <body x-data="app()">
@@ -347,6 +355,45 @@
           <div class="note" x-show="case_.decision.escalated">Uncertain &amp; expensive: ranked in the top 10% by uncertainty×amount, so it is routed to a human with evidence pre-assembled rather than auto-decided.</div>
         </div>
 
+        <!-- what-if evidence advisor -->
+        <div class="panel">
+          <h3>💡 How to win this — evidence-gap advisor</h3>
+          <div style="padding:12px">
+            <div class="wh-note">The model re-scores this case under counterfactual evidence
+              to find the cheapest documents that would make it winnable.</div>
+            <button class="btn sm" style="margin-top:8px" x-show="!whatif && !wiLoading"
+                    @click="loadWhatif()">Analyze evidence gaps →</button>
+            <div class="none pulse" x-show="wiLoading">⏳ running counterfactual re-scoring…</div>
+            <template x-if="whatif">
+              <div>
+                <div class="wi-base" style="margin-top:6px">Current:
+                  <b x-text="pct(whatif.base_p_win)"></b> win ·
+                  <span class="badge" :class="'b-'+whatif.base_action" x-text="whatif.base_action"></span></div>
+                <template x-if="whatif.levers.length">
+                  <div>
+                    <div class="audit-h" style="margin-top:10px">Documents you can still gather (ranked by impact)</div>
+                    <template x-for="l in whatif.levers" :key="l.label">
+                      <div class="wi-lever">
+                        <div style="flex:1"><b x-text="l.label"></b> —
+                          <span class="muted" x-text="l.howto"></span></div>
+                        <div class="wi-lift">+<span x-text="Math.round(l.lift*100)"></span> pts →
+                          <b x-text="pct(l.new_p_win)"></b>
+                          <span class="flip" x-show="l.flips_to_fight"
+                                x-text="'flips to FIGHT +'+rup(l.new_ev_inr)"></span></div>
+                      </div>
+                    </template>
+                    <div class="wi-combined" x-show="whatif.levers.length>1">All together →
+                      <b x-text="pct(whatif.combined.p_win)"></b> win<span class="flip"
+                        x-show="whatif.combined.flips_to_fight"
+                        x-text="'flips to FIGHT +'+rup(whatif.combined.ev_inr)"></span></div>
+                  </div>
+                </template>
+                <div class="ring-ai" style="border-color:#3a5c2e;margin-top:10px" x-text="whatif.recommendation"></div>
+              </div>
+            </template>
+          </div>
+        </div>
+
         <!-- evidence agent -->
         <div class="panel">
           <h3>Evidence agent — fixed 8-step sequence
@@ -425,7 +472,7 @@ function app(){
     ratio:0.5, _rt:null,
     askq:'', asking:false, asteps:[], answer:'',
     feed:[], simulating:false, approveQ:[], _fk:0, rzp:null,
-    ringData:null, scanning:false,
+    ringData:null, scanning:false, whatif:null, wiLoading:false,
     async init(){
       this.summary = await (await fetch('/api/summary')).json();
       this.ratio = this.summary.ratio;
@@ -451,9 +498,15 @@ function app(){
     onRatio(v){ this.ratio=parseFloat(v); clearTimeout(this._rt);
       this._rt=setTimeout(()=>this.refresh(), 120); },
     async select(did){
-      this.selected=did; this.case_=null; this.shown=0;
+      this.selected=did; this.case_=null; this.shown=0; this.whatif=null; this.wiLoading=false;
       this.case_ = await (await fetch('/api/dispute/'+did+'?ratio='+this.ratio)).json();
       this.play();
+    },
+    async loadWhatif(){
+      if(this.wiLoading) return; this.wiLoading=true;
+      try{ this.whatif=await (await fetch('/api/whatif/'+this.selected+'?ratio='+this.ratio)).json(); }
+      catch(e){ console.error(e); }
+      finally{ this.wiLoading=false; }
     },
     play(){
       this._t.forEach(clearTimeout); this._t=[]; this.shown=0;

@@ -36,9 +36,14 @@ from pydantic import BaseModel
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "src"))
 
+import numpy as np                    # noqa: E402
+from sklearn.linear_model import LogisticRegression  # noqa: E402
+from sklearn.preprocessing import StandardScaler     # noqa: E402
+
 import abuse_rings as AR              # noqa: E402
 import decision_engine as DE          # noqa: E402
 import evidence_agent as EA           # noqa: E402
+import features as F                  # noqa: E402
 import llm_client as LC               # noqa: E402
 import llm_generator as GEN           # noqa: E402
 import llm_verifier as VER            # noqa: E402
@@ -546,6 +551,108 @@ def rings():
         rr["assessment"] = _narrate_ring(r)
         out.append(rr)
     return {"metrics": _RING_METRICS, "dataset_size": int(len(_RINGS_DF)), "rings": out}
+
+
+# ---------------------------------------------------------------------------- #
+# What-if evidence advisor: re-score the model on counterfactual evidence to tell
+# the merchant the cheapest documents to gather to make a case winnable.
+# ---------------------------------------------------------------------------- #
+_FB = F.load_features()
+_XOHE = _FB.X_ohe
+_OHE_COLS = list(_XOHE.columns)
+_order = np.argsort(_FB.filed_dt.to_numpy(), kind="stable")
+_cut = int(len(_order) * 0.70)
+_SCALER = StandardScaler().fit(_XOHE.iloc[_order[:_cut]])
+_SCORER = LogisticRegression(max_iter=2000).fit(
+    _SCALER.transform(_XOHE.iloc[_order[:_cut]]), _FB.y.iloc[_order[:_cut]])
+_ID_TO_ROW = {d: i for i, d in enumerate(
+    pd.read_parquet(PROC / "disputes.parquet")["dispute_id"].tolist())}
+
+# gatherable evidence the merchant can still produce (field, favourable value,
+# label, how-to). Fixed facts (AVS/CVV/3DS/tenure/priors/device) are excluded.
+_LEVERS = [
+    ("delivery_proof_type", "signature", "Signed delivery proof",
+     "obtain a signed delivery confirmation or carrier proof-of-delivery"),
+    ("product_photos_on_file", 1, "Product photos",
+     "attach photos of the shipped item and the product listing"),
+    ("refund_policy_shown", 1, "Refund-policy acceptance",
+     "attach the refund policy the customer accepted at checkout"),
+    ("consent_record_exists", 1, "Consent / terms record",
+     "attach the terms-and-consent acceptance record for the order"),
+    ("customer_contacted_support", 1, "Support conversation",
+     "attach the customer's support-conversation history"),
+]
+
+
+def _score_native(row: dict) -> float:
+    oh = pd.get_dummies(pd.DataFrame([row]), columns=F.CATEGORICAL, dtype=int)
+    oh = oh.reindex(columns=_OHE_COLS, fill_value=0)
+    return float(_SCORER.predict_proba(_SCALER.transform(oh))[0, 1])
+
+
+def _is_off(field, cur):
+    return cur == "none" if field == "delivery_proof_type" else not bool(cur)
+
+
+def _whatif(dispute_id: str, ratio: float) -> dict:
+    i = _ID_TO_ROW[dispute_id]
+    base = _FB.X.iloc[i].to_dict()
+    base_p = _score_native(base)
+    amt = float(_DISPUTE_BY_ID.loc[dispute_id, "disputed_amount_inr"])
+    ctf = DE.cost_to_fight(COSTS)
+    base_ev = base_p * amt - ctf
+    base_action = str(decided_at(ratio).loc[dispute_id]["action"])
+
+    levers, row_all = [], dict(base)
+    for field, val, label, howto in _LEVERS:
+        if not _is_off(field, base[field]):
+            continue
+        row2 = dict(base); row2[field] = val
+        p2 = _score_native(row2)
+        if p2 - base_p <= 0.003:                 # only recommend real gains
+            continue
+        row_all[field] = val
+        ev2 = p2 * amt - ctf
+        levers.append({"label": label, "howto": howto,
+                       "lift": round(p2 - base_p, 3), "new_p_win": round(p2, 3),
+                       "new_ev_inr": round(ev2), "flips_to_fight": bool(base_ev <= 0 < ev2)})
+    levers.sort(key=lambda x: x["lift"], reverse=True)
+
+    p_all = _score_native(row_all)
+    combined = {"p_win": round(p_all, 3), "ev_inr": round(p_all * amt - ctf),
+                "flips_to_fight": bool(base_ev <= 0 < p_all * amt - ctf)}
+    return {"dispute_id": dispute_id, "base_p_win": round(base_p, 3),
+            "base_action": base_action, "amount_inr": amt,
+            "levers": levers, "combined": combined,
+            "recommendation": _whatif_narration(base_p, base_action, amt, levers)}
+
+
+def _whatif_narration(base_p, base_action, amt, levers) -> str:
+    if not levers:
+        return ("This case already carries strong evidence — no additional document "
+                "would materially raise the win probability.")
+    top = levers[0]
+    lines = "; ".join(f"{l['label']} (+{int(l['lift']*100)} pts -> {int(l['new_p_win']*100)}%)"
+                      for l in levers[:4])
+    prompt = (
+        f"A chargeback case is at {int(base_p*100)}% win probability (current decision: "
+        f"{base_action}, amount Rs {int(amt)}). The merchant can still gather these "
+        f"documents, each with the model's win-probability lift: {lines}. "
+        f"In at most 2 sentences, tell the merchant the single highest-impact document "
+        f"to gather ({top['label']}) and what it does to the decision / expected value. "
+        f"Defense-only, concrete, plain text.")
+    resp = LC.chat("openai/gpt-oss-120b",
+                   [{"role": "system", "content": "You advise merchants on chargeback "
+                     "evidence. Defense-only. Concise and actionable."},
+                    {"role": "user", "content": prompt}], 0.2, 400, reasoning_effort="low")
+    return resp["content"].strip().replace("**", "")
+
+
+@app.get("/api/whatif/{dispute_id}")
+def whatif(dispute_id: str, ratio: float = RATIO):
+    if dispute_id not in _ID_TO_ROW:
+        raise HTTPException(404, "unknown dispute")
+    return _whatif(dispute_id, ratio)
 
 
 @app.get("/")
