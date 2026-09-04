@@ -36,8 +36,10 @@ from pydantic import BaseModel
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "src"))
 
+import abuse_rings as AR              # noqa: E402
 import decision_engine as DE          # noqa: E402
 import evidence_agent as EA           # noqa: E402
+import llm_client as LC               # noqa: E402
 import llm_generator as GEN           # noqa: E402
 import llm_verifier as VER            # noqa: E402
 
@@ -506,6 +508,44 @@ def razorpay_submit(body: _Submit):
                 "razorpay_order_id": o["id"], "triage": tri}
     except Exception as exc:                                # noqa: BLE001
         return {"submitted": False, "mode": "error", "error": str(exc)[:160], "triage": tri}
+
+
+# ---------------------------------------------------------------------------- #
+# Abuse-ring detective (defense-only): cluster the dispute stream by shared
+# signature, flag coordinated rings, and have the AI narrate each one.
+# ---------------------------------------------------------------------------- #
+_RINGS_DF = AR.build_dataset()
+_RINGS, _RING_METRICS = AR.detect(_RINGS_DF)
+
+
+def _narrate_ring(r: dict) -> str:
+    prompt = (
+        "A fraud-ops clusterer flagged a suspected chargeback abuse ring. Stats:\n"
+        f"- members: {r['size']} disputes sharing one device fingerprint\n"
+        f"- product: {r['product']}, average amount Rs {r['amount_avg_inr']}\n"
+        f"- shipping city: {r['ship_city']}, card BIN {r['card_bin']}\n"
+        f"- {int(r['datacenter_pct']*100)}% from datacenter/proxy IPs; all filed "
+        f"within {r['filing_burst_days']} days\n\n"
+        "In at most 2 sentences: assess whether this looks coordinated, and give one "
+        "concrete DEFENSIVE action (e.g. hold payouts, manual review, block the BIN/"
+        "device, tighten 3DS). Defense-only. Plain text.")
+    resp = LC.chat("openai/gpt-oss-120b",
+                   [{"role": "system", "content": "You are a payments fraud-ops analyst. "
+                     "Defense-only. Be concise and specific."},
+                    {"role": "user", "content": prompt}],
+                   0.2, 400, reasoning_effort="low")
+    return resp["content"].strip().replace("**", "")
+
+
+@app.get("/api/rings")
+def rings():
+    out = []
+    for r in _RINGS:
+        rr = dict(r)
+        rr["device_fp"] = r["device_fp"][:12] + "…"        # mask
+        rr["assessment"] = _narrate_ring(r)
+        out.append(rr)
+    return {"metrics": _RING_METRICS, "dataset_size": int(len(_RINGS_DF)), "rings": out}
 
 
 @app.get("/")

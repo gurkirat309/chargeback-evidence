@@ -138,6 +138,15 @@
   .rzp-status{font-size:12px;font-weight:600;margin-bottom:8px}
   .rzp-status .ok{color:var(--good)} .rzp-status .no{color:var(--mut)}
   .rzp-status code{font-family:var(--mono);font-size:11px;color:var(--dim)}
+  /* abuse-ring detective */
+  .ring-metrics{font-size:12px;color:var(--mut);background:#0f1420;border:1px solid var(--line);
+    border-radius:8px;padding:9px 11px;margin:10px 0}
+  .ring-metrics b{color:var(--ink)}
+  .ring{border:1px solid #5c2932;background:#170f13;border-radius:9px;padding:10px 12px;margin-bottom:8px}
+  .ring-head{display:flex;align-items:center;gap:10px;flex-wrap:wrap}
+  .ring-risk{margin-left:auto;font-size:11px;color:var(--bad);font-weight:700}
+  .ring-traits{font-family:var(--mono);font-size:11px;color:var(--dim);margin:6px 0;word-break:break-word}
+  .ring-ai{font-size:13px;color:var(--ink);line-height:1.5;border-left:3px solid #5c2932;padding-left:10px}
 </style>
 </head>
 <body x-data="app()">
@@ -234,6 +243,48 @@
             </template>
           </div>
         </template>
+      </div>
+    </div>
+
+    <!-- abuse-ring detective -->
+    <div class="panel">
+      <h3>🕵️ Abuse-ring detective (defense-only)
+        <button class="btn sm" style="float:right;margin-top:-3px" @click="scanRings()"
+                :disabled="scanning" x-text="scanning?'scanning…':'▸ Scan the dispute stream'"></button>
+      </h3>
+      <div style="padding:12px">
+        <div class="wh-note">Clusters disputes by shared signature — device fingerprint,
+          card BIN, shipping city — and flags coordinated friendly-fraud rings. Validated
+          on planted rings (a known-answer eval).</div>
+        <template x-if="ringData">
+          <div>
+            <div class="ring-metrics">
+              Scanned <b x-text="ringData.dataset_size"></b> disputes ·
+              <b x-text="ringData.rings.length"></b> rings detected ·
+              precision <b x-text="pct(ringData.metrics.precision)"></b> ·
+              recall <b x-text="pct(ringData.metrics.recall)"></b> ·
+              F1 <b x-text="ringData.metrics.f1"></b>
+              <div class="muted" style="margin-top:5px">Recall under 100% is honest: one
+                stealth ring (residential IPs, slow burn) evaded the velocity/device
+                signals — a documented limitation.</div>
+            </div>
+            <template x-for="r in ringData.rings" :key="r.device_fp">
+              <div class="ring">
+                <div class="ring-head">
+                  <span class="badge" style="background:#3a1220;color:#ff6b6b;border:1px solid #5c2932"
+                        x-text="'RING · '+r.size+' disputes'"></span>
+                  <span class="rc" x-text="r.product+' · ~'+rup(r.amount_avg_inr)+' · '+r.ship_city"></span>
+                  <span class="ring-risk" x-text="'risk '+(r.risk*100).toFixed(0)+'%'"></span>
+                </div>
+                <div class="ring-traits"
+                     x-text="Math.round(r.datacenter_pct*100)+'% datacenter IP · filed within '+r.filing_burst_days+' days · device '+r.device_fp+' · BIN '+r.card_bin"></div>
+                <div class="ring-ai" x-text="r.assessment"></div>
+              </div>
+            </template>
+          </div>
+        </template>
+        <div class="none pulse" x-show="scanning">⏳ clustering the stream and assessing each cluster with AI…</div>
+        <div class="none" x-show="!ringData && !scanning">Click “Scan the dispute stream” to detect coordinated abuse rings.</div>
       </div>
     </div>
 
@@ -374,6 +425,7 @@ function app(){
     ratio:0.5, _rt:null,
     askq:'', asking:false, asteps:[], answer:'',
     feed:[], simulating:false, approveQ:[], _fk:0, rzp:null,
+    ringData:null, scanning:false,
     async init(){
       this.summary = await (await fetch('/api/summary')).json();
       this.ratio = this.summary.ratio;
@@ -417,6 +469,13 @@ function app(){
         setTimeout(()=>{ this.flash=null; }, 1500);
       });
     },
+    async scanRings(){
+      if(this.scanning) return; this.scanning=true; this.ringData=null;
+      try{ this.ringData=await (await fetch('/api/rings')).json(); }
+      catch(e){ console.error(e); }
+      finally{ this.scanning=false; }
+    },
+    pct(x){ return Math.round(x*100)+'%'; },
     async simulate(){
       if(this.simulating) return;
       this.simulating=true; this.feed=[]; this.approveQ=[];
