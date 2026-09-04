@@ -26,6 +26,7 @@ secrets.*
 # Pitch / video scripts — local only, not for the judged repo
 docs/PITCH.md
 docs/VIDEO_SCRIPT.md
+video_script.txt
 
 # OS / editor
 .DS_Store
