@@ -80,8 +80,13 @@ seed**; the LLM responses are cached, so once warmed the demo needs no live call
 - A **fixed 8-step evidence agent** (deliberately *not* agentic) assembles a numbered
   bundle; every artifact has a resolvable `artifact_id`.
 - The **generator** writes claims that each cite an artifact; a **separate verifier**
-  strips any it can't support. Measured: 100% citation coverage, ~8% of claims
-  stripped, 0% hallucination-under-stress, adversarial fabrications caught 5/5.
+  strips any it can't support.
+- **LLM safety & security** (`src/security.py`, `src/llm_eval.py`) — evidence text can
+  be attacker-influenced in production, so an **input guard** screens it for prompt
+  injection before the model sees it. The harness reports quality *and* security on the
+  test disputes: citation coverage **100%**, verifier strip rate **4.9%**,
+  hallucination-under-stress **0%**, adversarial fabrications caught **5/5**; and
+  prompt-injection leak **60% → 0%** with the guard on (100% detection).
 
 **Honest evaluation** (`src/evaluate.py`)
 - Baseline table (above), precision/recall/F1 on the FIGHT decision, calibration
@@ -149,6 +154,7 @@ Build the pipeline (in order — each step is a few seconds):
 | 3 | `python src/train_model.py` | calibrated model + `predictions.parquet` + `reports/calibration.png` |
 | 4 | `python src/evaluate.py` | the headline table + `reports/net_recovery_curve.png` |
 | 5 | `python -m pytest tests/ -q` | 17 decision-engine unit tests |
+| 6 | `python src/llm_eval.py` | LLM safety & quality metrics (coverage, strip, hallucination, prompt-injection) |
 
 Run the dashboard:
 

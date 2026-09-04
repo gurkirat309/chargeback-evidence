@@ -28,6 +28,10 @@ with open(ROOT / "config" / "llm.yaml", "r", encoding="utf-8") as _fh:
     LLM_CFG = yaml.safe_load(_fh)
 
 CACHE_DIR = ROOT / LLM_CFG["cache_dir"]
+try:                                 # create once at import, not on every call
+    CACHE_DIR.mkdir(parents=True, exist_ok=True)
+except Exception:
+    pass
 _client = None                       # lazily created only on a cache miss
 
 
@@ -55,7 +59,6 @@ def _cache_key(model, messages, temperature, max_tokens, reasoning_effort) -> st
 def chat(model, messages, temperature, max_tokens, reasoning_effort=None,
          force_refresh=False) -> dict:
     """Return {'content': str, 'cached': bool, 'key': str}. Cached by input hash."""
-    CACHE_DIR.mkdir(parents=True, exist_ok=True)
     key = _cache_key(model, messages, temperature, max_tokens, reasoning_effort)
     path = CACHE_DIR / f"{key}.json"
 

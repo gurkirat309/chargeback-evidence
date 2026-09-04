@@ -42,9 +42,18 @@ def _format_artifacts(payload) -> str:
         f"- {a['artifact_id']}: {a['statement']}" for a in payload["artifacts"])
 
 
-def generate_letter(bundle: Bundle, force_refresh=False) -> dict:
-    """Return {'framing': str, 'claims': [{claim, artifact_id}], 'cached': bool}."""
+def generate_letter(bundle: Bundle, force_refresh=False, guard=True) -> dict:
+    """Return {'framing', 'claims', 'cached', 'guard_flagged'}. `guard` runs the
+    prompt-injection screen over evidence text before the model sees it (default
+    on; the harness toggles it off to measure the unguarded attack surface)."""
+    import security as SEC
     payload = bundle_for_generator(bundle)     # reason_code + present artifacts only
+    flagged = []
+    if guard:
+        for a in payload["artifacts"]:
+            clean, hit = SEC.sanitize(a["statement"])
+            if hit:
+                flagged.append(a["artifact_id"]); a["statement"] = clean
     user = USER_TEMPLATE.format(
         reason_code=payload["reason_code"], artifacts=_format_artifacts(payload))
     messages = [{"role": "system", "content": SYSTEM},
@@ -53,7 +62,11 @@ def generate_letter(bundle: Bundle, force_refresh=False) -> dict:
     resp = LC.chat(CFG["model"], messages, CFG["temperature"], CFG["max_tokens"],
                    reasoning_effort=CFG.get("reasoning_effort"),
                    force_refresh=force_refresh)
-    data = LC.extract_json(resp["content"])
+    raw = resp["content"]
+    try:                                       # a hijacked/malformed response must
+        data = LC.extract_json(raw)            # not crash — degrade to an empty letter
+    except Exception:
+        data = {}
 
     framing = str(data.get("framing", "")).strip()
     claims = []
@@ -61,4 +74,5 @@ def generate_letter(bundle: Bundle, force_refresh=False) -> dict:
         if isinstance(c, dict) and "claim" in c and "artifact_id" in c:
             claims.append({"claim": str(c["claim"]).strip(),
                            "artifact_id": str(c["artifact_id"]).strip()})
-    return {"framing": framing, "claims": claims, "cached": resp["cached"]}
+    return {"framing": framing, "claims": claims, "cached": resp["cached"],
+            "guard_flagged": flagged, "raw": raw[:600]}
