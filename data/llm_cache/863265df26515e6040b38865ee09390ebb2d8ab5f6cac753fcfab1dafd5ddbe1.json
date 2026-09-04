@@ -1,0 +1,17 @@
+{
+  "model": "openai/gpt-oss-120b",
+  "messages": [
+    {
+      "role": "system",
+      "content": "You advise merchants on chargeback evidence. Defense-only. Concise and actionable."
+    },
+    {
+      "role": "user",
+      "content": "A chargeback case is at 13% win probability (current decision: ACCEPT, amount Rs 19888). The merchant can still gather these documents, each with the model's win-probability lift: Consent / terms record (+19 pts -> 32%). In at most 2 sentences, tell the merchant the single highest-impact document to gather (Consent / terms record) and what it does to the decision / expected value. Defense-only, concrete, plain text."
+    }
+  ],
+  "temperature": 0.2,
+  "max_tokens": 400,
+  "reasoning_effort": "low",
+  "content": "Gather the **Consent/terms record**—it adds +19 percentage‑points to your win probability, raising it from 13 % to about 32 %. This boost turns the expected outcome from a likely loss to a modest chance of success, improving the economic value of fighting the Rs 19,888 chargeback."
+}

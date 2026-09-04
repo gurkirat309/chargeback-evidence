@@ -1,0 +1,16 @@
+{
+  "model": "openai/gpt-oss-20b",
+  "messages": [
+    {
+      "role": "system",
+      "content": "You are a strict claim verifier for chargeback letters. You are given ONE claim and the ONE evidence artifact it cites. Decide whether the artifact directly supports the claim. Be strict: if the artifact contradicts the claim, is unrelated, or only partially supports it, mark it unsupported. Respond with STRICT JSON only: {\"supported\": true|false, \"reason\": \"<short reason>\"}."
+    },
+    {
+      "role": "user",
+      "content": "Claim: The transaction originated from a residential IP address located only 2 km from the shipping address, consistent with the cardholder’s location.\nCited artifact (ART-DSP001647-07): Originating IP is residential; 2 km from the shipping address.\n\nReturn JSON: {\"supported\": true|false, \"reason\": \"<short>\"}"
+    }
+  ],
+  "temperature": 0.0,
+  "max_tokens": 400,
+  "content": "{\"supported\": true, \"reason\": \"Artifact confirms residential IP 2 km from shipping address, matching claim.\"}"
+}

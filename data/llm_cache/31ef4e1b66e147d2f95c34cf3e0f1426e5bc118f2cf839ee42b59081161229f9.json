@@ -1,0 +1,17 @@
+{
+  "model": "openai/gpt-oss-120b",
+  "messages": [
+    {
+      "role": "system",
+      "content": "You draft chargeback representment (dispute rebuttal) letters for a merchant. You are defense-only. You will be given a reason code and a numbered list of evidence artifacts, each with an artifact_id and a factual statement. Write ONLY claims that are directly supported by a specific artifact, and cite that artifact_id. Never invent facts, never cite an artifact_id that is not in the list, and do not assert anything an artifact contradicts (e.g. if AVS is 'no match', do not claim the address matched). If the evidence is weak, write fewer claims — never pad. Respond with STRICT JSON only, no prose outside JSON."
+    },
+    {
+      "role": "user",
+      "content": "Reason code: fraud\n\nEvidence artifacts:\n- ART-DSP001642-01: Order of Rs 145288 under reason code 'fraud'; dispute filed 24 days after the transaction.\n- ART-DSP001642-02: Address Verification (AVS): match.\n- ART-DSP001642-03: Card security code (CVV): match.\n- ART-DSP001642-04: 3-D Secure authentication: attempted.\n- ART-DSP001642-05: Cardholder account age 434 days; 11 prior transactions on file.\n- ART-DSP001642-06: Delivery proof on file: photo.\n- ART-DSP001642-07: Device fingerprint vs. customer history: unknown.\n- ART-DSP001642-08: Originating IP is residential; 11 km from the shipping address.\n- ART-DSP001642-09: 11 of 11 prior transactions on this instrument were undisputed.\n- ART-DSP001642-10: Customer support contact on record: 1 ticket(s).\n\nReturn JSON with this exact shape:\n{\n  \"framing\": \"<=2 sentence framing paragraph, no specific factual claims>\",\n  \"claims\": [{\"claim\": \"<one supported sentence>\", \"artifact_id\": \"<ART-...>\"}]\n}"
+    }
+  ],
+  "temperature": 0.2,
+  "max_tokens": 2000,
+  "reasoning_effort": "low",
+  "content": "{\n  \"framing\": \"The merchant provides multiple pieces of evidence demonstrating that the transaction was authorized and consistent with the cardholder's historical activity.\",\n  \"claims\": [\n    {\n      \"claim\": \"The billing address matched the address on file according to Address Verification (AVS).\",\n      \"artifact_id\": \"ART-DSP001642-02\"\n    },\n    {\n      \"claim\": \"The card security code (CVV) provided matched the issuer's records.\",\n      \"artifact_id\": \"ART-DSP001642-03\"\n    },\n    {\n      \"claim\": \"A 3-D Secure authentication attempt was made for the transaction.\",\n      \"artifact_id\": \"ART-DSP001642-04\"\n    },\n    {\n      \"claim\": \"The cardholder's account had been active for 434 days and had 11 prior undisputed transactions on the same instrument.\",\n      \"artifact_id\": \"ART-DSP001642-05\"\n    },\n    {\n      \"claim\": \"All 11 prior transactions on this instrument were undisputed.\",\n      \"artifact_id\": \"ART-DSP001642-09\"\n    },\n    {\n      \"claim\": \"Delivery was confirmed with a photographic proof of receipt.\",\n      \"artifact_id\": \"ART-DSP001642-06\"\n    },\n    {\n      \"claim\": \"The originating IP address was residential and located only 11 km from the shipping address.\",\n      \"artifact_id\": \"ART-DSP001642-08\"\n    },\n    {\n      \"claim\": \"Customer support records show at least one ticket associated with the cardholder.\",\n      \"artifact_id\": \"ART-DSP001642-10\"\n    }\n  ]\n}"
+}

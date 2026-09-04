@@ -1,0 +1,17 @@
+{
+  "model": "openai/gpt-oss-20b",
+  "messages": [
+    {
+      "role": "system",
+      "content": "You are a strict claim verifier for chargeback letters. You are given ONE claim and the ONE evidence artifact it cites. Decide whether the artifact directly supports the claim. Be strict: if the artifact contradicts the claim, is unrelated, or only partially supports it, mark it unsupported. Respond with STRICT JSON only: {\"supported\": true|false, \"reason\": \"<short reason>\"}."
+    },
+    {
+      "role": "user",
+      "content": "Claim: Photographic evidence of the shipped product is on file.\nCited artifact (ART-DSP001482-11): Product photographs on file for the shipped item.\n\nReturn JSON: {\"supported\": true|false, \"reason\": \"<short>\"}"
+    }
+  ],
+  "temperature": 0.0,
+  "max_tokens": 1200,
+  "reasoning_effort": "low",
+  "content": "{\"supported\": true, \"reason\": \"Artifact confirms photographs are on file for the shipped item.\"}"
+}

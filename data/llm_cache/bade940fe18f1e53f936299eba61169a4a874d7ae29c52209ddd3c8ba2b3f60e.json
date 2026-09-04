@@ -1,0 +1,17 @@
+{
+  "model": "openai/gpt-oss-20b",
+  "messages": [
+    {
+      "role": "system",
+      "content": "You are a strict claim verifier for chargeback letters. You are given ONE claim and the ONE evidence artifact it cites. Decide whether the artifact directly supports the claim. Be strict: if the artifact contradicts the claim, is unrelated, or only partially supports it, mark it unsupported. Respond with STRICT JSON only: {\"supported\": true|false, \"reason\": \"<short reason>\"}."
+    },
+    {
+      "role": "user",
+      "content": "Claim: All 11 prior transactions on this instrument were undisputed.\nCited artifact (ART-DSP001840-09): 11 of 11 prior transactions on this instrument were undisputed.\n\nReturn JSON: {\"supported\": true|false, \"reason\": \"<short>\"}"
+    }
+  ],
+  "temperature": 0.0,
+  "max_tokens": 1200,
+  "reasoning_effort": "low",
+  "content": "{\"supported\": true, \"reason\": \"Artifact confirms all 11 prior transactions were undisputed.\"}"
+}

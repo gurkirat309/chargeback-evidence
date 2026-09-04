@@ -1,0 +1,17 @@
+{
+  "model": "openai/gpt-oss-120b",
+  "messages": [
+    {
+      "role": "system",
+      "content": "You draft chargeback representment (dispute rebuttal) letters for a merchant. You are defense-only. You will be given a reason code and a numbered list of evidence artifacts, each with an artifact_id and a factual statement. Write ONLY claims that are directly supported by a specific artifact, and cite that artifact_id. Never invent facts, never cite an artifact_id that is not in the list, and do not assert anything an artifact contradicts (e.g. if AVS is 'no match', do not claim the address matched). If the evidence is weak, write fewer claims — never pad. Respond with STRICT JSON only, no prose outside JSON."
+    },
+    {
+      "role": "user",
+      "content": "Reason code: subscription\n\nEvidence artifacts:\n- ART-DSP000480-01: Order of Rs 3872 under reason code 'subscription'; dispute filed 107 days after the transaction.\n- ART-DSP000480-02: Address Verification (AVS): match.\n- ART-DSP000480-03: Card security code (CVV): match.\n- ART-DSP000480-04: 3-D Secure authentication: passed.\n- ART-DSP000480-05: Cardholder account age 159 days; 12 prior transactions on file.\n- ART-DSP000480-06: Delivery proof on file: otp (OTP verified).\n- ART-DSP000480-07: Device fingerprint vs. customer history: unknown.\n- ART-DSP000480-08: Originating IP is residential; 12 km from the shipping address.\n- ART-DSP000480-09: 12 of 12 prior transactions on this instrument were undisputed.\n- ART-DSP000480-10: Customer support contact on record: 1 ticket(s).\n- ART-DSP000480-11: Consent / terms-acceptance record on file for this order.\n\nReturn JSON with this exact shape:\n{\n  \"framing\": \"<=2 sentence framing paragraph, no specific factual claims>\",\n  \"claims\": [{\"claim\": \"<one supported sentence>\", \"artifact_id\": \"<ART-...>\"}]\n}"
+    }
+  ],
+  "temperature": 0.2,
+  "max_tokens": 2000,
+  "reasoning_effort": "low",
+  "content": "{\n  \"framing\": \"The merchant provides comprehensive evidence demonstrating that the transaction was authorized and consistent with the cardholder's established purchasing behavior.\",\n  \"claims\": [\n    {\n      \"claim\": \"The transaction for Rs 3872 was a subscription purchase and the dispute was filed 107 days after the transaction.\",\n      \"artifact_id\": \"ART-DSP000480-01\"\n    },\n    {\n      \"claim\": \"The billing address matched the address on file according to AVS.\",\n      \"artifact_id\": \"ART-DSP000480-02\"\n    },\n    {\n      \"claim\": \"The card security code (CVV) matched.\",\n      \"artifact_id\": \"ART-DSP000480-03\"\n    },\n    {\n      \"claim\": \"The transaction passed 3‑D Secure authentication.\",\n      \"artifact_id\": \"ART-DSP000480-04\"\n    },\n    {\n      \"claim\": \"The cardholder's account had been active for 159 days and had 12 prior transactions on this instrument.\",\n      \"artifact_id\": \"ART-DSP000480-05\"\n    },\n    {\n      \"claim\": \"Delivery was confirmed by a verified OTP.\",\n      \"artifact_id\": \"ART-DSP000480-06\"\n    },\n    {\n      \"claim\": \"The originating IP address was residential and located only 12 km from the shipping address.\",\n      \"artifact_id\": \"ART-DSP000480-08\"\n    },\n    {\n      \"claim\": \"All 12 previous transactions on this card were undisputed.\",\n      \"artifact_id\": \"ART-DSP000480-09\"\n    },\n    {\n      \"claim\": \"The customer accepted the terms and consent for this order.\",\n      \"artifact_id\": \"ART-DSP000480-11\"\n    }\n  ]\n}"
+}

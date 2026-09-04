@@ -1,0 +1,17 @@
+{
+  "model": "openai/gpt-oss-20b",
+  "messages": [
+    {
+      "role": "system",
+      "content": "You are a strict claim verifier for chargeback letters. You are given ONE claim and the ONE evidence artifact it cites. Decide whether the artifact directly supports the claim. Be strict: if the artifact contradicts the claim, is unrelated, or only partially supports it, mark it unsupported. Respond with STRICT JSON only: {\"supported\": true|false, \"reason\": \"<short reason>\"}."
+    },
+    {
+      "role": "user",
+      "content": "Claim: The cardholder’s account had been open for 346 days and had 15 prior transactions on file.\nCited artifact (ART-DSP000864-05): Cardholder account age 346 days; 15 prior transactions on file.\n\nReturn JSON: {\"supported\": true|false, \"reason\": \"<short>\"}"
+    }
+  ],
+  "temperature": 0.0,
+  "max_tokens": 1200,
+  "reasoning_effort": "low",
+  "content": "{\"supported\": true, \"reason\": \"Artifact explicitly states 346 days and 15 prior transactions.\"}"
+}

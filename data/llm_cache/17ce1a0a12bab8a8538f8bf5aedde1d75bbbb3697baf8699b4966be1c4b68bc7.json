@@ -1,0 +1,17 @@
+{
+  "model": "openai/gpt-oss-120b",
+  "messages": [
+    {
+      "role": "system",
+      "content": "You draft chargeback representment (dispute rebuttal) letters for a merchant. You are defense-only. You will be given a reason code and a numbered list of evidence artifacts, each with an artifact_id and a factual statement. Write ONLY claims that are directly supported by a specific artifact, and cite that artifact_id. Never invent facts, never cite an artifact_id that is not in the list, and do not assert anything an artifact contradicts (e.g. if AVS is 'no match', do not claim the address matched). If the evidence is weak, write fewer claims — never pad. Respond with STRICT JSON only, no prose outside JSON."
+    },
+    {
+      "role": "user",
+      "content": "Reason code: inr\n\nEvidence artifacts:\n- ART-DSP001637-01: Order of Rs 4312 under reason code 'inr'; dispute filed 28 days after the transaction.\n- ART-DSP001637-02: Address Verification (AVS): match.\n- ART-DSP001637-03: Card security code (CVV): match.\n- ART-DSP001637-04: 3-D Secure authentication: none.\n- ART-DSP001637-05: Cardholder account age 664 days; 17 prior transactions on file.\n- ART-DSP001637-06: Delivery proof on file: signature.\n- ART-DSP001637-07: Device fingerprint vs. customer history: unknown.\n- ART-DSP001637-08: Originating IP is residential; 3 km from the shipping address.\n- ART-DSP001637-09: 17 of 17 prior transactions on this instrument were undisputed.\n- ART-DSP001637-10: Consent / terms-acceptance record on file for this order.\n- ART-DSP001637-11: Product photographs on file for the shipped item.\n- ART-DSP001637-12: Refund policy was shown to the customer at checkout.\n\nReturn JSON with this exact shape:\n{\n  \"framing\": \"<=2 sentence framing paragraph, no specific factual claims>\",\n  \"claims\": [{\"claim\": \"<one supported sentence>\", \"artifact_id\": \"<ART-...>\"}]\n}"
+    }
+  ],
+  "temperature": 0.2,
+  "max_tokens": 2000,
+  "reasoning_effort": "low",
+  "content": "{\n  \"framing\": \"The merchant provides multiple pieces of evidence confirming the legitimacy of the transaction and the cardholder's consent.\",\n  \"claims\": [\n    {\n      \"claim\": \"The billing address matched the address on file according to AVS verification.\",\n      \"artifact_id\": \"ART-DSP001637-02\"\n    },\n    {\n      \"claim\": \"The card security code (CVV) provided matched the issuer's records.\",\n      \"artifact_id\": \"ART-DSP001637-03\"\n    },\n    {\n      \"claim\": \"The cardholder's account had been active for 664 days with 17 prior undisputed transactions on the same instrument.\",\n      \"artifact_id\": \"ART-DSP001637-05\"\n    },\n    {\n      \"claim\": \"All 17 prior transactions on this instrument were undisputed, indicating a history of legitimate use.\",\n      \"artifact_id\": \"ART-DSP001637-09\"\n    },\n    {\n      \"claim\": \"The order was delivered with a customer signature as proof of receipt.\",\n      \"artifact_id\": \"ART-DSP001637-06\"\n    },\n    {\n      \"claim\": \"The customer accepted the merchant's terms and consent record is on file for this order.\",\n      \"artifact_id\": \"ART-DSP001637-10\"\n    },\n    {\n      \"claim\": \"The refund policy was displayed to the customer at checkout.\",\n      \"artifact_id\": \"ART-DSP001637-12\"\n    }\n  ]\n}"
+}

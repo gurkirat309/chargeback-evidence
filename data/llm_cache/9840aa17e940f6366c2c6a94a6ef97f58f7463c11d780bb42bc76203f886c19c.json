@@ -1,0 +1,17 @@
+{
+  "model": "openai/gpt-oss-120b",
+  "messages": [
+    {
+      "role": "system",
+      "content": "You draft chargeback representment (dispute rebuttal) letters for a merchant. You are defense-only. You will be given a reason code and a numbered list of evidence artifacts, each with an artifact_id and a factual statement. Write ONLY claims that are directly supported by a specific artifact, and cite that artifact_id. Never invent facts, never cite an artifact_id that is not in the list, and do not assert anything an artifact contradicts (e.g. if AVS is 'no match', do not claim the address matched). If the evidence is weak, write fewer claims — never pad. Respond with STRICT JSON only, no prose outside JSON."
+    },
+    {
+      "role": "user",
+      "content": "Reason code: nad\n\nEvidence artifacts:\n- ART-DSP000864-01: Order of Rs 19888 under reason code 'nad'; dispute filed 100 days after the transaction.\n- ART-DSP000864-02: Address Verification (AVS): match.\n- ART-DSP000864-03: Card security code (CVV): match.\n- ART-DSP000864-04: 3-D Secure authentication: attempted.\n- ART-DSP000864-05: Cardholder account age 346 days; 15 prior transactions on file.\n- ART-DSP000864-06: Delivery proof on file: tracking.\n- ART-DSP000864-07: Device fingerprint vs. customer history: unknown.\n- ART-DSP000864-08: Originating IP is residential; 32 km from the shipping address.\n- ART-DSP000864-09: 14 of 15 prior transactions on this instrument were undisputed.\n- ART-DSP000864-10: Product photographs on file for the shipped item.\n- ART-DSP000864-11: Refund policy was shown to the customer at checkout.\n\nReturn JSON with this exact shape:\n{\n  \"framing\": \"<=2 sentence framing paragraph, no specific factual claims>\",\n  \"claims\": [{\"claim\": \"<one supported sentence>\", \"artifact_id\": \"<ART-...>\"}]\n}"
+    }
+  ],
+  "temperature": 0.2,
+  "max_tokens": 2000,
+  "reasoning_effort": "low",
+  "content": "{\n  \"framing\": \"The merchant provides multiple pieces of evidence confirming the legitimacy of the transaction and the cardholder’s prior relationship with the account.\",\n  \"claims\": [\n    {\n      \"claim\": \"The address verification system returned a match for the transaction.\",\n      \"artifact_id\": \"ART-DSP000864-02\"\n    },\n    {\n      \"claim\": \"The card security code (CVV) matched the issuer’s records.\",\n      \"artifact_id\": \"ART-DSP000864-03\"\n    },\n    {\n      \"claim\": \"A 3‑D Secure authentication was attempted during checkout.\",\n      \"artifact_id\": \"ART-DSP000864-04\"\n    },\n    {\n      \"claim\": \"The cardholder’s account had been open for 346 days and had 15 prior transactions on file.\",\n      \"artifact_id\": \"ART-DSP000864-05\"\n    },\n    {\n      \"claim\": \"Fourteen of the fifteen prior transactions on this instrument were undisputed.\",\n      \"artifact_id\": \"ART-DSP000864-09\"\n    },\n    {\n      \"claim\": \"The merchant displayed its refund policy to the customer at checkout.\",\n      \"artifact_id\": \"ART-DSP000864-11\"\n    },\n    {\n      \"claim\": \"Delivery of the purchased item is confirmed by a tracking record.\",\n      \"artifact_id\": \"ART-DSP000864-06\"\n    }\n  ]\n}"
+}

@@ -1,0 +1,17 @@
+{
+  "model": "openai/gpt-oss-120b",
+  "messages": [
+    {
+      "role": "system",
+      "content": "You draft chargeback representment (dispute rebuttal) letters for a merchant. You are defense-only. You will be given a reason code and a numbered list of evidence artifacts, each with an artifact_id and a factual statement. Write ONLY claims that are directly supported by a specific artifact, and cite that artifact_id. Never invent facts, never cite an artifact_id that is not in the list, and do not assert anything an artifact contradicts (e.g. if AVS is 'no match', do not claim the address matched). If the evidence is weak, write fewer claims — never pad. Respond with STRICT JSON only, no prose outside JSON."
+    },
+    {
+      "role": "user",
+      "content": "Reason code: inr\n\nEvidence artifacts:\n- ART-DSP001786-01: Order of Rs 6600 under reason code 'inr'; dispute filed 29 days after the transaction.\n- ART-DSP001786-02: Address Verification (AVS): no match.\n- ART-DSP001786-03: Card security code (CVV): match.\n- ART-DSP001786-04: 3-D Secure authentication: none.\n- ART-DSP001786-05: Cardholder account age 93 days; 2 prior transactions on file.\n- ART-DSP001786-06: Delivery proof on file: tracking.\n- ART-DSP001786-08: Originating IP is a datacenter/hosting provider; 397 km from the shipping address.\n- ART-DSP001786-09: 2 of 2 prior transactions on this instrument were undisputed.\n- ART-DSP001786-10: Refund policy was shown to the customer at checkout.\n\nReturn JSON with this exact shape:\n{\n  \"framing\": \"<=2 sentence framing paragraph, no specific factual claims>\",\n  \"claims\": [{\"claim\": \"<one supported sentence>\", \"artifact_id\": \"<ART-...>\"}]\n}"
+    }
+  ],
+  "temperature": 0.2,
+  "max_tokens": 2000,
+  "reasoning_effort": "low",
+  "content": "{\n  \"framing\": \"The merchant provides multiple pieces of evidence that support the legitimacy of the transaction and the cardholder's prior relationship with the account.\",\n  \"claims\": [\n    {\n      \"claim\": \"The card security code (CVV) provided by the cardholder matched the issuing bank's records.\",\n      \"artifact_id\": \"ART-DSP001786-03\"\n    },\n    {\n      \"claim\": \"Two prior transactions on this instrument were undisputed, indicating a history of legitimate use.\",\n      \"artifact_id\": \"ART-DSP001786-09\"\n    },\n    {\n      \"claim\": \"The refund policy was clearly displayed to the customer at checkout.\",\n      \"artifact_id\": \"ART-DSP001786-10\"\n    },\n    {\n      \"claim\": \"Delivery proof, including tracking information, is on file for the order.\",\n      \"artifact_id\": \"ART-DSP001786-06\"\n    }\n  ]\n}"
+}

@@ -1,0 +1,17 @@
+{
+  "model": "openai/gpt-oss-120b",
+  "messages": [
+    {
+      "role": "system",
+      "content": "You advise merchants on chargeback evidence. Defense-only. Concise and actionable."
+    },
+    {
+      "role": "user",
+      "content": "A chargeback case is at 88% win probability (current decision: FIGHT, amount Rs 34320). The merchant can still gather these documents, each with the model's win-probability lift: Refund-policy acceptance (+1 pts -> 90%). In at most 2 sentences, tell the merchant the single highest-impact document to gather (Refund-policy acceptance) and what it does to the decision / expected value. Defense-only, concrete, plain text."
+    }
+  ],
+  "temperature": 0.2,
+  "max_tokens": 400,
+  "reasoning_effort": "low",
+  "content": "Gather the **Refund‑policy acceptance** document. Adding it raises the win probability from 88 % to 90 %, improving the expected outcome of the “FIGHT” decision for the Rs 34,320 chargeback."
+}

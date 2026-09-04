@@ -698,10 +698,12 @@ if __name__ == "__main__":
     ap = argparse.ArgumentParser()
     ap.add_argument("--warm", action="store_true")
     ap.add_argument("--serve", action="store_true")
-    ap.add_argument("--port", type=int, default=8000)
+    ap.add_argument("--port", type=int, default=int(os.environ.get("PORT", 8000)))
     args = ap.parse_args()
     if args.warm:
         warm()
     if args.serve or not args.warm:
         import uvicorn
-        uvicorn.run(app, host="127.0.0.1", port=args.port)
+        # Bind 0.0.0.0 when a host injects PORT (Render/Railway); else localhost.
+        host = "0.0.0.0" if os.environ.get("PORT") else "127.0.0.1"
+        uvicorn.run(app, host=host, port=args.port)

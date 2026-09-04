@@ -1,0 +1,16 @@
+{
+  "model": "openai/gpt-oss-20b",
+  "messages": [
+    {
+      "role": "system",
+      "content": "You are a strict claim verifier for chargeback letters. You are given ONE claim and the ONE evidence artifact it cites. Decide whether the artifact directly supports the claim. Be strict: if the artifact contradicts the claim, is unrelated, or only partially supports it, mark it unsupported. Respond with STRICT JSON only: {\"supported\": true|false, \"reason\": \"<short reason>\"}."
+    },
+    {
+      "role": "user",
+      "content": "Claim: The customer’s consent and acceptance of terms are recorded for this order.\nCited artifact (ART-DSP001501-10): Consent / terms-acceptance record on file for this order.\n\nReturn JSON: {\"supported\": true|false, \"reason\": \"<short>\"}"
+    }
+  ],
+  "temperature": 0.0,
+  "max_tokens": 400,
+  "content": "{\"supported\": true, \"reason\": \"Artifact explicitly states a consent/terms acceptance record exists for the order.\"}"
+}

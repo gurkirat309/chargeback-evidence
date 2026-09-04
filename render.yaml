@@ -1,0 +1,21 @@
+# Render blueprint for RokdaDaav (FastAPI dashboard + APIs).
+# One-click: New > Blueprint > point at this repo. Set the three secrets in the
+# Render dashboard (Environment tab) — never commit them.
+services:
+  - type: web
+    name: rokdadaav
+    runtime: python
+    plan: free
+    buildCommand: pip install -r requirements.txt
+    # PORT is injected by Render; main.py reads it and binds 0.0.0.0.
+    startCommand: python app/main.py --serve
+    healthCheckPath: /api/summary
+    envVars:
+      - key: PYTHON_VERSION
+        value: "3.13.0"
+      - key: GROQ_API_KEY
+        sync: false          # set in dashboard
+      - key: RAZORPAY_KEY_ID
+        sync: false          # set in dashboard
+      - key: RAZORPAY_KEY_SECRET
+        sync: false          # set in dashboard

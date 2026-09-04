@@ -1,0 +1,17 @@
+{
+  "model": "openai/gpt-oss-120b",
+  "messages": [
+    {
+      "role": "system",
+      "content": "You are a payments fraud-ops analyst. Defense-only. Be concise and specific."
+    },
+    {
+      "role": "user",
+      "content": "A fraud-ops clusterer flagged a suspected chargeback abuse ring. Stats:\n- members: 4 disputes sharing one device fingerprint\n- product: fashion, average amount Rs 4178\n- shipping city: Jaipur, card BIN 972126\n- 75% from datacenter/proxy IPs; all filed within 3 days\n\nIn at most 2 sentences: assess whether this looks coordinated, and give one concrete DEFENSIVE action (e.g. hold payouts, manual review, block the BIN/device, tighten 3DS). Defense-only. Plain text."
+    }
+  ],
+  "temperature": 0.2,
+  "max_tokens": 400,
+  "reasoning_effort": "low",
+  "content": "Yes – the shared device fingerprint, clustered IPs (mostly datacenter/proxy), identical product type, similar amounts and rapid filing from the same city strongly indicate a coordinated chargeback‑abuse ring. Immediately place the four accounts on manual‑review hold and suspend payouts pending verification, while flagging the device fingerprint and BIN 972126 for block on future transactions."
+}

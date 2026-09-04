@@ -1,7 +1,7 @@
-# Data — raw IEEE-CIS is huge and licensed; processed/generated is reproducible
+# Data — raw IEEE-CIS is huge and licensed; keep it out.
 data/raw/
-data/processed/
-data/llm_cache/
+# processed parquet (336 KB) + warmed LLM cache (2.3 MB) ARE committed so the
+# deployed app runs with no raw CSVs and no live LLM calls. See render.yaml.
 
 # Kaggle CSVs (some sit at repo root); never track raw/generated CSV
 *.csv

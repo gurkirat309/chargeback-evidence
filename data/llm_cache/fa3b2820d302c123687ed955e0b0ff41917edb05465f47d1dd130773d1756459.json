@@ -1,0 +1,17 @@
+{
+  "model": "openai/gpt-oss-120b",
+  "messages": [
+    {
+      "role": "system",
+      "content": "You draft chargeback representment (dispute rebuttal) letters for a merchant. You are defense-only. You will be given a reason code and a numbered list of evidence artifacts, each with an artifact_id and a factual statement. Write ONLY claims that are directly supported by a specific artifact, and cite that artifact_id. Never invent facts, never cite an artifact_id that is not in the list, and do not assert anything an artifact contradicts (e.g. if AVS is 'no match', do not claim the address matched). If the evidence is weak, write fewer claims — never pad. Respond with STRICT JSON only, no prose outside JSON."
+    },
+    {
+      "role": "user",
+      "content": "Reason code: nad\n\nEvidence artifacts:\n- ART-DSP001545-01: Order of Rs 7740 under reason code 'nad'; dispute filed 60 days after the transaction.\n- ART-DSP001545-02: Address Verification (AVS): match.\n- ART-DSP001545-04: 3-D Secure authentication: attempted.\n- ART-DSP001545-05: Cardholder account age 578 days; 11 prior transactions on file.\n- ART-DSP001545-06: Delivery proof on file: signature.\n- ART-DSP001545-07: Device fingerprint vs. customer history: unknown.\n- ART-DSP001545-08: Originating IP is residential; 51 km from the shipping address.\n- ART-DSP001545-09: 10 of 11 prior transactions on this instrument were undisputed.\n- ART-DSP001545-10: Customer support contact on record: 1 ticket(s).\n- ART-DSP001545-11: Consent / terms-acceptance record on file for this order.\n- ART-DSP001545-12: Product photographs on file for the shipped item.\n\nReturn JSON with this exact shape:\n{\n  \"framing\": \"<=2 sentence framing paragraph, no specific factual claims>\",\n  \"claims\": [{\"claim\": \"<one supported sentence>\", \"artifact_id\": \"<ART-...>\"}]\n}"
+    }
+  ],
+  "temperature": 0.2,
+  "max_tokens": 2000,
+  "reasoning_effort": "low",
+  "content": "{\n  \"framing\": \"The merchant provides multiple pieces of evidence demonstrating that the transaction was authorized, the cardholder’s account is established, and the goods were delivered as agreed.\",\n  \"claims\": [\n    {\n      \"claim\": \"The address verification system returned a match for the billing address.\",\n      \"artifact_id\": \"ART-DSP001545-02\"\n    },\n    {\n      \"claim\": \"A 3-D Secure authentication attempt was made during checkout.\",\n      \"artifact_id\": \"ART-DSP001545-04\"\n    },\n    {\n      \"claim\": \"The cardholder’s account has been active for 578 days and includes 11 prior transactions.\",\n      \"artifact_id\": \"ART-DSP001545-05\"\n    },\n    {\n      \"claim\": \"Delivery of the order was confirmed with the recipient’s signature.\",\n      \"artifact_id\": \"ART-DSP001545-06\"\n    },\n    {\n      \"claim\": \"Ten of the eleven previous transactions on this instrument were undisputed.\",\n      \"artifact_id\": \"ART-DSP001545-09\"\n    },\n    {\n      \"claim\": \"The customer provided consent and accepted the terms for this order.\",\n      \"artifact_id\": \"ART-DSP001545-11\"\n    }\n  ]\n}"
+}

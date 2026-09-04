@@ -1,0 +1,38 @@
+{
+  "seed": 20260830,
+  "subset_size": 200000,
+  "n_selected": 2000,
+  "n_dropped_right_censored": 115,
+  "censor_rate_of_selected": 0.0575,
+  "n_disputes": 1885,
+  "data_window_end": 15811131,
+  "observation_buffer_days": 14,
+  "observation_end": 17020731,
+  "train_fraction": 0.7,
+  "target_share": {
+    "fraud": 0.32,
+    "inr": 0.23,
+    "nad": 0.19,
+    "subscription": 0.11,
+    "agent_initiated": 0.15
+  },
+  "generated_reason_share": {
+    "fraud": 0.3195,
+    "inr": 0.24,
+    "nad": 0.187,
+    "agent_initiated": 0.15,
+    "subscription": 0.1035
+  },
+  "base_win_rate": {
+    "fraud": 0.24973989440488234,
+    "inr": 0.6010878788483698,
+    "nad": 0.34978145142617295,
+    "subscription": 0.45016600268752216,
+    "agent_initiated": 0.3989121211516302
+  },
+  "leakage_auc_band": [
+    0.72,
+    0.8
+  ],
+  "leakage_auc_fail_above": 0.85
+}
