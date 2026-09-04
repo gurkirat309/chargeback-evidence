@@ -23,6 +23,10 @@ reports/
 *.key
 secrets.*
 
+# Pitch / video scripts — local only, not for the judged repo
+docs/PITCH.md
+docs/VIDEO_SCRIPT.md
+
 # OS / editor
 .DS_Store
 Thumbs.db
